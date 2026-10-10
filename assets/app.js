@@ -17,6 +17,16 @@
 
   try { tasks = JSON.parse(localStorage.getItem(KEY)) || []; } catch { tasks = []; }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(tasks)); } catch {} };
+  const JOBS_KEY = 'oaf-jobs-v1';        // per-project info: upsell potential, sub
+  let jobs = {};
+  try { jobs = JSON.parse(localStorage.getItem(JOBS_KEY)) || {}; } catch { jobs = {}; }
+  const saveJobs = () => { try { localStorage.setItem(JOBS_KEY, JSON.stringify(jobs)); } catch {} };
+  const money = n => n >= 1000 ? '$' + (n / 1000).toFixed(n % 1000 ? 1 : 0).replace(/\.0$/, '') + 'k' : '$' + n;
+  function fmtTime(t) {
+    if (!t) return '';
+    const [h, m] = t.split(':').map(Number);
+    return `${h % 12 || 12}:${pad(m)} ${h < 12 ? 'AM' : 'PM'}`;
+  }
 
   const pad = n => String(n).padStart(2, '0');
   const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -32,7 +42,7 @@
     const [y, m, d] = s.split('-').map(Number);
     return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   }
-  const cmp = (a, b) => (a.due || '9999').localeCompare(b.due || '9999') || (b.star ? 1 : 0) - (a.star ? 1 : 0) || a.title.localeCompare(b.title);
+  const cmp = (a, b) => (a.due || '9999').localeCompare(b.due || '9999') || (b.star ? 1 : 0) - (a.star ? 1 : 0) || (a.ord ?? 99) - (b.ord ?? 99) || a.title.localeCompare(b.title);
 
   function taskHTML(t) {
     const t0 = todayISO(), c = catOf(t.cat);
@@ -44,7 +54,7 @@
         <div class="meta">
           ${c ? `<span class="tag">${c.icon} ${c.label}</span>` : ''}
           ${t.project ? `<span class="proj">${esc(t.project)}</span>` : ''}
-          <span class="date ${dcls}">${fmtDate(t.due)}</span>
+          <span class="date ${dcls}">${fmtDate(t.due)}${t.time ? ' · ' + fmtTime(t.time) : ''}</span>
         </div>
         ${t.notes ? `<div class="notes">${esc(t.notes)}</div>` : ''}
       </div>
@@ -101,6 +111,7 @@
               <span class="pcount">${g.length} open${late ? ` · <em>${late} late</em>` : ''}</span>
               <span class="chev">${shut ? '▸' : '▾'}</span>
             </button>
+            <button class="pup ${jobs[n]?.upsell ? 'set' : ''}" data-act="upsell" data-p="${n === 'No project' ? '' : esc(n)}">${jobs[n]?.upsell ? money(jobs[n].upsell) + ' upsell' : '+ upsell $'}</button>
             <button class="padd" data-act="addto" data-p="${n === 'No project' ? '' : esc(n)}" aria-label="Add task to ${esc(n)}">+</button>
           </div>
           ${shut ? '' : g.map(taskHTML).join('')}
@@ -114,6 +125,9 @@
       </div><div class="hint">Your tasks are stored on this phone only. Back up now and then.</div>`;
     }
     $('#stats').innerHTML = stats; $('#stats').hidden = !stats;
+    $('#jobbar').hidden = view === 'upcoming';
+    const inPlay = [...new Set(open.map(t => t.project).filter(Boolean))].reduce((a, n) => a + (jobs[n]?.upsell || 0), 0);
+    $('#pot').innerHTML = inPlay ? `Upsell potential in play <b>${money(inPlay)}</b>` : 'Add upsell potential to each job';
     $('#main').innerHTML = html;
     document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
     $('#projList').innerHTML = [...new Set(tasks.map(t => t.project).filter(Boolean))].map(p => `<option value="${esc(p)}">`).join('');
@@ -162,6 +176,47 @@
     save(); closeSheet(); render();
   }
 
+  // ---- new job sold: creates the whole first-48-hours playbook ----
+  function setKick(v) {
+    $('#j-kick').value = v || '';
+    document.querySelectorAll('#kickChips .chip').forEach(c => c.classList.toggle('on', !!v && addDays(+c.dataset.d) === v));
+  }
+  function openJob() {
+    ['#j-name', '#j-sub', '#j-upsell'].forEach(i => $(i).value = '');
+    setKick(addDays(1)); $('#j-time').value = '08:00';
+    $('#jobBg').classList.add('open'); setTimeout(() => $('#j-name').focus(), 60);
+  }
+  const closeJob = () => $('#jobBg').classList.remove('open');
+  function saveJob() {
+    const name = $('#j-name').value.trim();
+    if (!name) { $('#j-name').focus(); return; }
+    const kick = $('#j-kick').value || addDays(1), time = $('#j-time').value || '08:00';
+    const sub = $('#j-sub').value.trim(), amt = parseInt($('#j-upsell').value.replace(/[^0-9]/g, ''), 10) || 0;
+    const subTxt = sub || 'the sub';
+    const plan = [
+      [0, 'Pick up coffee + donuts, meet ' + subTxt + ' at the site', 'visit', false, true],
+      [0, 'Take photos of the site before work starts', 'visit', false, true],
+      [0, 'Sign ' + name + ' on DocuSign with the finance company', 'money', false, true],
+      [0, 'Walk ' + subTxt + ' through what needs to be done', 'visit', false, true],
+      [0, 'Find upsell opportunities with ' + name, 'visit', true, true],
+      [1, 'Confirm ' + subTxt + ' started, ask for photos', 'call', false, false],
+      [3, 'Upsell follow-up call with ' + name, 'call', true, false],
+      [7, 'Progress check before work gets covered up', 'visit', false, false],
+    ];
+    plan.forEach(([off, title, cat, star, timed], i) => tasks.push({
+      id: uid(), done: false, title, project: name, due: addDays(off, kick), cat, star, notes: '', ord: i, ...(timed ? { time } : {}),
+    }));
+    jobs[name] = { ...(jobs[name] || {}), upsell: amt, sub }; saveJobs(); save();
+    closeJob(); view = 'today'; filter = 'all'; render(); window.scrollTo(0, 0);
+    toast(`${plan.length} tasks created for ${name}`);
+  }
+  $('#newJobBtn').onclick = openJob;
+  $('#jCancel').onclick = closeJob;
+  $('#jSave').onclick = saveJob;
+  $('#jobBg').onclick = e => { if (e.target.id === 'jobBg') closeJob(); };
+  $('#kickChips').onclick = e => { const c = e.target.closest('.chip'); if (c) setKick(addDays(+c.dataset.d)); };
+  $('#j-kick').onchange = e => setKick(e.target.value);
+
   // ---- events ----
   $('#fab').onclick = () => openSheet();
   $('#cancelBtn').onclick = closeSheet;
@@ -191,6 +246,13 @@
       const act = el.dataset.act;
       if (act === 'collapse') { const p = el.dataset.p; collapsed.has(p) ? collapsed.delete(p) : collapsed.add(p); return render(); }
       if (act === 'addto') return openSheet(null, el.dataset.p);
+      if (act === 'upsell') {
+        const n = el.dataset.p; if (!n) return;
+        const v = prompt(`Upsell potential for ${n} (in dollars, e.g. 30000):`, jobs[n]?.upsell || '');
+        if (v === null) return;
+        const amt = parseInt(String(v).replace(/[^0-9]/g, ''), 10) || 0;
+        jobs[n] = { ...(jobs[n] || {}), upsell: amt }; saveJobs(); return render();
+      }
       const t = tasks.find(x => x.id === el.closest('.task').dataset.id); if (!t) return;
       if (act === 'toggle') {
         t.done = !t.done; t.doneOn = t.done ? todayISO() : null; save(); render();
@@ -206,7 +268,7 @@
     const id = e.target.id;
     if (id === 'exportBtn') {
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([JSON.stringify(tasks, null, 2)], { type: 'application/json' }));
+      a.href = URL.createObjectURL(new Blob([JSON.stringify({ tasks, jobs }, null, 2)], { type: 'application/json' }));
       a.download = `tasks-backup-${todayISO()}.json`; a.click();
     } else if (id === 'importBtn') $('#importFile').click();
     else if (id === 'clearDone' && confirm('Remove all completed tasks?')) { tasks = tasks.filter(t => !t.done); save(); render(); }
@@ -216,8 +278,13 @@
     const f = e.target.files[0]; if (!f) return;
     f.text().then(txt => {
       try {
-        const d = JSON.parse(txt); if (!Array.isArray(d)) throw 0;
-        if (confirm(`Replace current tasks with ${d.length} from the backup?`)) { tasks = d; save(); render(); }
+        const raw = JSON.parse(txt), d = Array.isArray(raw) ? raw : raw.tasks;
+        if (!Array.isArray(d)) throw 0;
+        if (confirm(`Replace current tasks with ${d.length} from the backup?`)) {
+          tasks = d; save();
+          if (!Array.isArray(raw) && raw.jobs) { jobs = raw.jobs; saveJobs(); }
+          render();
+        }
       } catch { alert('That file is not a valid backup.'); }
     });
   });

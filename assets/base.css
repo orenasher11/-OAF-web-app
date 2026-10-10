@@ -79,3 +79,11 @@ textarea{min-height:72px;resize:vertical}
 .btn.ghost{background:var(--bg)}
 .btn.danger{background:none;color:var(--danger);flex:none;padding:14px 8px}
 [hidden]{display:none!important}
+
+.jobbar{display:flex;align-items:center;gap:12px;margin-top:14px}
+.newjob{border:0;border-radius:var(--radius-sm);background:var(--accent);color:var(--accent-ink);font-weight:800;padding:12px 16px;font-size:15px;white-space:nowrap}
+.pot{font-size:12.5px;color:var(--head-sub);line-height:1.25}.pot b{display:block;font-size:20px;color:var(--head-text)}
+.pup{border:var(--border) dashed var(--line);background:none;border-radius:999px;padding:0 12px;font-size:12.5px;font-weight:700;color:var(--muted);white-space:nowrap}
+.pup.set{border-style:solid;border-color:var(--accent);color:var(--accent-text,var(--accent))}
+.help{margin:0 0 4px;font-size:13.5px;color:var(--muted)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}

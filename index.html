@@ -18,6 +18,10 @@
     <h1 id="h1"></h1>
     <div class="sub" id="sub"></div>
     <section class="stats" id="stats" hidden></section>
+    <div class="jobbar" id="jobbar">
+      <button class="newjob" id="newJobBtn">🏗️ New job sold</button>
+      <div class="pot" id="pot"></div>
+    </div>
   </header>
   <main id="main"></main>
 </div>
@@ -54,6 +58,33 @@
       <button class="btn danger" id="delBtn" hidden>Delete</button>
       <button class="btn ghost" id="cancelBtn">Cancel</button>
       <button class="btn primary" id="saveBtn">Save</button>
+    </div>
+  </div>
+</div>
+<div class="sheet-bg" id="jobBg">
+  <div class="sheet" role="dialog">
+    <div class="grab"></div>
+    <h2>New job sold</h2>
+    <p class="help">Creates your kickoff checklist (coffee + donuts, photos, DocuSign, sub walkthrough, upsell discovery) plus follow-ups.</p>
+    <label for="j-name">Customer / project</label>
+    <input id="j-name" placeholder="e.g. Martinez kitchen" autocomplete="off">
+    <label>Kickoff day</label>
+    <div class="chips" id="kickChips">
+      <button type="button" class="chip" data-d="0">Today</button>
+      <button type="button" class="chip" data-d="1">Tomorrow</button>
+      <button type="button" class="chip" data-d="2">In 2 days</button>
+    </div>
+    <div class="row2">
+      <input type="date" id="j-kick" class="dateinput">
+      <input type="time" id="j-time" class="dateinput" value="08:00">
+    </div>
+    <label for="j-sub">Sub (optional)</label>
+    <input id="j-sub" placeholder="e.g. Carlos plumbing" autocomplete="off">
+    <label for="j-upsell">Upsell potential in $ (optional)</label>
+    <input id="j-upsell" inputmode="numeric" placeholder="e.g. 30000" autocomplete="off">
+    <div class="actions">
+      <button class="btn ghost" id="jCancel">Cancel</button>
+      <button class="btn primary" id="jSave">Create job</button>
     </div>
   </div>
 </div>
