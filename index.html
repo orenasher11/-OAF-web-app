@@ -27,12 +27,29 @@
   <main id="main"></main>
 </div>
 <button class="fab" id="fab" aria-label="Add task">+</button>
+<div class="chathead" id="chatHead" hidden>
+  <button class="cback" id="cBack" aria-label="Back">&#8249;</button>
+  <div class="cavatar"><svg viewBox="0 0 24 24" width="26" height="26" fill="#0b7a4b"><path d="M16 11a3 3 0 100-6 3 3 0 000 6zM8 11a3 3 0 100-6 3 3 0 000 6zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></div>
+  <button class="ctitle" id="cTitle"><b id="cName"></b><span id="cMembers"></span></button>
+  <button class="cact" id="cTasks" aria-label="Tasks">✅<i id="cTaskN"></i></button>
+  <button class="cact" id="cWa" aria-label="Open WhatsApp group" hidden>↗</button>
+</div>
 <div class="composer" id="composer" hidden>
-  <div class="tobar" id="toBar"></div>
   <div class="cbar">
-    <button class="cplus" id="chatPlus" aria-label="More">＋</button>
-    <textarea id="chatIn" rows="1" placeholder="Message your team"></textarea>
-    <button class="csend" id="chatSend" aria-label="Send">➤</button>
+    <button class="cplus" id="chatPlus" aria-label="Attach">＋</button>
+    <div class="cinput"><textarea id="chatIn" rows="1" placeholder="Message"></textarea><button class="csticker" id="cQuick" aria-label="Quick messages">☺</button></div>
+    <button class="ccam" id="cCam" aria-label="Ask for photos">📷</button>
+    <button class="cmain mic" id="chatSend" aria-label="Send"></button>
+  </div>
+  <div class="apanel" id="apanel" hidden>
+    <button data-a="quick"><i style="background:#fff3d6">⚡</i>Quick messages</button>
+    <button data-a="photos"><i style="background:#e0f0ff">📷</i>Ask for photos</button>
+    <button data-a="reply"><i style="background:#e3f7e8">↙</i>Log a reply</button>
+    <button data-a="note"><i style="background:#fff7bf">📝</i>Save as note</button>
+    <button data-a="loc"><i style="background:#e0f7ef">📍</i>Job location</button>
+    <button data-a="summary"><i style="background:#ece6ff">📋</i>Summary</button>
+    <button data-a="via" id="apVia"><i style="background:#d9fdd3">📤</i>Sending via WhatsApp</button>
+    <button data-a="team"><i style="background:#ffe6e0">👥</i>My team</button>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -108,6 +125,8 @@
     <h2 id="eTitle">Job</h2>
     <label for="e-addr">Job address</label>
     <input id="e-addr" placeholder="e.g. 123 Main St, Palm Springs" autocomplete="off">
+    <label for="e-wa">WhatsApp group link (optional)</label>
+    <input id="e-wa" type="url" inputmode="url" placeholder="https://chat.whatsapp.com/..." autocomplete="off">
     <label>Subs on this job</label>
     <div id="subRows"></div>
     <button type="button" class="chip addsub" id="addSub">＋ Add another sub</button>
@@ -179,21 +198,11 @@
     <div class="hint">This opens your Messages app with everyone and the text filled in. You tap send.</div>
   </div>
 </div>
-<div class="sheet-bg" id="plusBg">
-  <div class="sheet" role="dialog">
-    <div class="grab"></div>
-    <button class="pickbtn" data-p="quick">⚡ Quick messages &amp; who to send to</button>
-    <button class="pickbtn" data-p="reply">↙ Log a reply I got</button>
-    <button class="pickbtn" data-p="note">📝 Save what I typed as a note (don't send)</button>
-    <button class="pickbtn" data-p="team">👥 Edit my team</button>
-    <div class="actions"><button class="btn ghost" data-p="cancel">Cancel</button></div>
-  </div>
-</div>
 <div class="sheet-bg" id="inBg">
   <div class="sheet" role="dialog">
     <div class="grab"></div>
     <h2>Log a reply</h2>
-    <p class="help">Replies come to your Messages app, so paste or type what they said to keep it with the job.</p>
+    <p class="help">Type what they said. Or copy messages in WhatsApp (touch and hold a message, tap Copy) and paste them here. Names and times are picked up automatically.</p>
     <label for="inWho">From</label>
     <select id="inWho"></select>
     <label for="inText">What they said</label>

@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '13';
+  const APP_VERSION = '14';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   const OWNER = 'Oren';
   const CATS = [
@@ -133,35 +133,78 @@
     if (j.last) items.push({ id: 'v', ts: new Date(j.last + 'T12:00:00').getTime(), kind: 'sys', text: j.kind === 'photos' ? '📷 Photos received from sub' : '🚗 Site visit logged' });
     return items.sort((a, b) => a.ts - b.ts);
   }
+  const NAME_COLORS = ['#0b7a6b', '#a24bbf', '#d1580b', '#1f6feb', '#c2185b', '#5d8a00', '#7b4fd1', '#b8860b'];
+  const nameColor = nm => NAME_COLORS[[...String(nm || '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % NAME_COLORS.length];
+  const MIC_SVG = '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 15a3.5 3.5 0 003.5-3.5V6a3.5 3.5 0 10-7 0v5.5A3.5 3.5 0 0012 15zm6-3.5a6 6 0 01-12 0H4.5a7.5 7.5 0 006.75 7.46V22h1.5v-3.04A7.5 7.5 0 0019.5 11.5z"/></svg>';
+  const SEND_SVG = '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M3.4 20.4l17.45-7.48a1 1 0 000-1.84L3.4 3.6a.99.99 0 00-1.39.91L2 9.12c0 .5.37.93.87.99L17 12 2.87 13.88c-.5.07-.87.5-.87 1l.01 4.61c0 .71.73 1.2 1.39.91z"/></svg>';
+  let sendVia = 'wa';
+  try { sendVia = localStorage.getItem('oaf-via-v1') || 'wa'; } catch {}
+  let lastTap = { id: '', t: 0 }, pressTimer = null, pressed = false;
+
   function chatHTML(n) {
     const items = timeline(n);
-    if (!items.length) return `<div class="empty"><div class="big">💬</div>No messages yet.<br>Messages you send to your team, replies you log, notes, and job updates will show up here.</div>`;
-    let last = '', out = '<div class="chat">';
+    if (!items.length) return `<div class="chatempty">🔒 Messages, replies, notes and job updates for this job show up here.<br>Tap <b>＋</b> to get started.</div>`;
+    let last = '', prev = '', out = '<div class="chat">';
     items.forEach(x => {
       const d = new Date(x.ts), key = iso(d);
-      if (key !== last) { out += `<div class="bday"><span>${fmtDate(key)}</span></div>`; last = key; }
+      if (key !== last) { out += `<div class="bday"><span>${fmtDate(key)}</span></div>`; last = key; prev = ''; }
       const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-      if (x.kind === 'sys') { out += `<div class="bsys">${esc(x.text)}</div>`; return; }
-      out += `<div class="bub ${x.kind}" data-act="delmsg" data-id="${x.id}" data-k="${x.kind}">
-        ${x.kind === 'in' ? `<div class="bwho">${esc(x.who || 'Reply')}</div>` : ''}
+      if (x.kind === 'sys') { out += `<div class="bsys">${esc(x.text)}</div>`; prev = ''; return; }
+      const run = x.kind + '|' + (x.who || ''), first = run !== prev; prev = run;
+      out += `<div class="bub ${x.kind} ${first ? 'first' : ''} ${x.heart ? 'hasheart' : ''}" data-id="${x.id}" data-k="${x.kind}">
+        ${x.kind === 'in' && first ? `<div class="bwho" style="color:${nameColor(x.who)}">${esc(x.who || 'Reply')}</div>` : ''}
         ${x.kind === 'out' && x.to && x.to.length ? `<div class="bto">To: ${esc(x.to.join(', '))}</div>` : ''}
-        ${x.kind === 'note' ? '<div class="bto">📝 Note</div>' : ''}
-        <div class="btext">${esc(x.text)}</div><div class="btime">${time}${x.kind === 'out' ? ' ✓' : ''}</div></div>`;
+        ${x.kind === 'note' ? '<div class="bto">📝 Note to self</div>' : ''}
+        <span class="btext">${esc(x.text)}</span><span class="btime">${time}${x.kind === 'out' ? ' <i class="tick">✓</i>' : ''}</span>
+        ${x.heart ? '<span class="react">❤️</span>' : ''}</div>`;
     });
     return out + '</div>';
   }
   function layoutComposer() {
+    if (!$('#composer') || $('#composer').hidden) return;
     const vv = window.visualViewport, kb = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
-    $('#composer').style.bottom = (kb > 80 ? kb : document.querySelector('nav').offsetHeight) + 'px';
+    $('#composer').style.bottom = (kb > 80 ? kb : 0) + 'px';
+    $('#composer').classList.toggle('kb', kb > 80);
+    document.querySelector('main').style.paddingBottom = ($('#composer').offsetHeight + 14) + 'px';
   }
   if (window.visualViewport) { visualViewport.addEventListener('resize', layoutComposer); visualViewport.addEventListener('scroll', layoutComposer); }
+  function updateMain() { $('#chatSend').innerHTML = $('#chatIn').value.trim() ? SEND_SVG : MIC_SVG; $('#chatSend').classList.toggle('mic', !$('#chatIn').value.trim()); }
+  function paintChatHead() {
+    const n = curJob, j = jobs[n] || {};
+    $('#cName').textContent = j.addr || n;
+    const names = [...new Set([...getSubs(j), ...team].map(x => x.name))];
+    $('#cMembers').textContent = [...names, 'You'].join(', ');
+    $('#cTaskN').textContent = tasks.filter(t => !t.done && t.project === n).length || ''; $('#cWa').hidden = !j.wa;
+    $('#apVia').lastChild.textContent = sendVia === 'wa' ? 'Sending via WhatsApp' : 'Sending via Messages';
+  }
   function sendChat() {
-    const text = $('#chatIn').value.trim(); if (!text) return;
+    const text = $('#chatIn').value.trim();
+    if (!text) { toast('Tap the 🎤 on your keyboard to dictate'); $('#chatIn').focus(); return; }
+    if (sendVia === 'wa') {
+      logMsg(curJob, 'out', text, { via: 'wa' });
+      $('#chatIn').value = ''; autoGrow(); render();
+      location.href = 'https://wa.me/?text=' + encodeURIComponent(text);
+      return;
+    }
     const g = groupMembers(curJob);
-    logMsg(curJob, g.length ? 'out' : 'note', text, g.length ? { to: g.map(x => x.name) } : {});
-    $('#chatIn').value = ''; $('#chatIn').style.height = 'auto'; render();
+    logMsg(curJob, g.length ? 'out' : 'note', text, g.length ? { to: g.map(x => x.name), via: 'sms' } : {});
+    $('#chatIn').value = ''; autoGrow(); render();
     if (g.length) location.href = `sms:${g.map(x => cleanPhone(x.phone)).join(',')}${/iPhone|iPad|Mac/.test(navigator.userAgent) ? '&' : '?'}body=${encodeURIComponent(text)}`;
-    else toast('Saved as a note. Tap "To:" to pick who to text.');
+    else toast('Saved as a note. Pick who to text from ＋ → Quick messages.');
+  }
+  // paste copied WhatsApp messages: "[10/10/26, 11:18 PM] Name: text" (also "10/10/26, 11:18 PM - Name: text")
+  function parseWhatsApp(text) {
+    const re = /^\[?(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4}),?\s+(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?\]?\s*[-–]?\s*([^:\n]{1,40}?):\s*(.*)$/;
+    const out = [];
+    text.split(/\r?\n/).forEach(line => {
+      const m = line.replace(/[‎‏ ]/g, ' ').match(re);
+      if (m) {
+        let [, mo, dd, yy, hh, mi, ap, who, body] = m; yy = +yy < 100 ? 2000 + +yy : +yy; hh = +hh;
+        if (ap) { ap = ap.toLowerCase(); if (ap === 'pm' && hh < 12) hh += 12; if (ap === 'am' && hh === 12) hh = 0; }
+        out.push({ at: new Date(yy, +mo - 1, +dd, hh, +mi).toISOString(), who: who.trim(), text: body });
+      } else if (out.length && line.trim()) out[out.length - 1].text += '\n' + line;
+    });
+    return out;
   }
   const smsHref = (phone, body) => `sms:${phone || ''}${/iPhone|iPad|Mac/.test(navigator.userAgent) ? '&' : '?'}body=${encodeURIComponent(body)}`;
   function fmtTime(t) {
@@ -297,7 +340,7 @@
       $('#sub').textContent = j.addr || 'No address yet. Open Details to add it.';
       const mine = open.filter(t => t.project === n);
       const doneT = tasks.filter(t => t.done && t.project === n);
-      html += `<div class="jtabs">${[['chat', '💬 Chat'], ['tasks', '✅ Tasks' + (mine.length ? ' (' + mine.length + ')' : '')], ['info', 'ℹ️ Details']]
+      if (jobTab !== 'chat') html += `<div class="jtabs">${[['chat', '💬 Chat'], ['tasks', '✅ Tasks' + (mine.length ? ' (' + mine.length + ')' : '')], ['info', 'ℹ️ Details']]
         .map(([k, l]) => `<button class="jtab ${jobTab === k ? 'on' : ''}" data-act="jtab" data-tab="${k}">${l}</button>`).join('')}</div>`;
       if (jobTab === 'chat') html += chatHTML(n);
       else if (jobTab === 'tasks') {
@@ -310,7 +353,8 @@
           <div><span>Address</span><b>${esc(j.addr || 'none')}</b></div>
           <div><span>Upsell potential</span><b>${j.upsell ? money(j.upsell) : 'not set'}</b></div>
           <div><span>Last site check</span><b>${j.last ? agoText(j.last) + ' · ' + (j.kind === 'photos' ? 'photos' : 'on site') : 'none logged'}</b></div>
-          <div><span>Check every</span><b>${j.every || 5} days</b></div></div>
+          <div><span>Check every</span><b>${j.every || 5} days</b></div>
+          <div><span>WhatsApp group</span><b>${j.wa ? '<a href="' + esc(j.wa) + '">Open group</a>' : 'not linked'}</b></div></div>
           <div class="jobactions">
             <button class="jbtn primary" data-act="editjobd">✎ Edit job</button>
             <button class="jbtn" data-act="summary">📝 Summary</button>
@@ -364,14 +408,10 @@
     $('#main').innerHTML = html;
     document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === (view === 'job' ? 'projects' : view)));
     const inChat = view === 'job' && jobTab === 'chat';
-    $('#composer').hidden = !inChat; $('#fab').hidden = inChat;
+    $('#composer').hidden = !inChat; $('#chatHead').hidden = !inChat; $('#fab').hidden = inChat;
     document.body.classList.toggle('inchat', inChat);
-    if (inChat) {
-      const g = groupMembers(curJob);
-      $('#toBar').innerHTML = g.length ? `To: <b>${esc(g.map(x => x.name).join(', '))}</b> · change` : 'To: nobody selected · tap to choose';
-      layoutComposer();
-      requestAnimationFrame(() => window.scrollTo(0, document.body.scrollHeight));
-    }
+    if (!inChat) document.querySelector('main').style.paddingBottom = '';
+    if (inChat) { paintChatHead(); updateMain(); layoutComposer(); requestAnimationFrame(() => { layoutComposer(); window.scrollTo(0, document.body.scrollHeight); }); }
     $('#projList').innerHTML = [...new Set(tasks.map(t => t.project).filter(Boolean))].map(p => `<option value="${esc(p)}">`).join('');
   }
 
@@ -500,33 +540,68 @@
   };
 
   // ---- composer ----
-  function autoGrow() { const t = $('#chatIn'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 120) + 'px'; }
+  function autoGrow() { const t = $('#chatIn'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 120) + 'px'; updateMain(); layoutComposer(); }
   $('#chatIn').addEventListener('input', autoGrow);
-  $('#chatIn').addEventListener('focus', () => setTimeout(() => { layoutComposer(); window.scrollTo(0, document.body.scrollHeight); }, 300));
+  $('#chatIn').addEventListener('focus', () => { $('#apanel').hidden = true; setTimeout(() => { layoutComposer(); window.scrollTo(0, document.body.scrollHeight); }, 300); });
   $('#chatIn').addEventListener('blur', () => setTimeout(layoutComposer, 100));
   $('#chatSend').onclick = sendChat;
-  $('#toBar').onclick = () => openMsg(curJob);
-  $('#chatPlus').onclick = () => $('#plusBg').classList.add('open');
-  $('#plusBg').onclick = e => {
-    const b = e.target.closest('[data-p]'), closeP = () => $('#plusBg').classList.remove('open');
-    if (e.target.id === 'plusBg' || (b && b.dataset.p === 'cancel')) return closeP();
-    if (!b) return; closeP();
-    if (b.dataset.p === 'quick') openMsg(curJob);
-    else if (b.dataset.p === 'reply') {
-      const people = [...getSubs(jobs[curJob]), ...team];
+  $('#chatPlus').onclick = () => { const p = $('#apanel'); p.hidden = !p.hidden; if (!p.hidden) $('#chatIn').blur(); layoutComposer(); window.scrollTo(0, document.body.scrollHeight); };
+  $('#cCam').onclick = () => doAction('photos');
+  $('#cQuick').onclick = () => doAction('quick');
+  $('#cBack').onclick = () => { view = 'projects'; render(); window.scrollTo(0, 0); };
+  $('#cTitle').onclick = () => { jobTab = 'info'; render(); window.scrollTo(0, 0); };
+  $('#cTasks').onclick = () => { jobTab = 'tasks'; render(); window.scrollTo(0, 0); };
+  $('#cWa').onclick = () => { const w = (jobs[curJob] || {}).wa; if (w) location.href = w; };
+  function doAction(a) {
+    $('#apanel').hidden = true; layoutComposer();
+    const j = jobs[curJob] || {}, ad = j.addr ? ' (' + j.addr + ')' : '';
+    if (a === 'quick') openMsg(curJob);
+    else if (a === 'photos') { $('#chatIn').value = TEMPLATES[0][1](curJob, ad); autoGrow(); $('#chatIn').focus(); }
+    else if (a === 'loc') {
+      if (!j.addr) { toast('Add the job address in Details first'); return; }
+      $('#chatIn').value = ($('#chatIn').value ? $('#chatIn').value + '\n' : '') + 'Job location: https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(j.addr); autoGrow(); $('#chatIn').focus();
+    } else if (a === 'summary') { $('#chatIn').value = jobSummary(curJob); autoGrow(); $('#chatIn').focus(); }
+    else if (a === 'reply') {
+      const people = [...getSubs(j), ...team];
       $('#inWho').innerHTML = people.map(x => `<option>${esc(x.name)}</option>`).join('') + '<option>Customer</option><option>Other</option>';
       $('#inText').value = ''; $('#inBg').classList.add('open'); setTimeout(() => $('#inText').focus(), 60);
-    } else if (b.dataset.p === 'note') {
-      const text = $('#chatIn').value.trim(); if (!text) { toast('Type the note first, then choose this'); return; }
+    } else if (a === 'note') {
+      const text = $('#chatIn').value.trim(); if (!text) { toast('Type the note first, then tap Note'); return; }
       logMsg(curJob, 'note', text); $('#chatIn').value = ''; autoGrow(); render();
-    } else if (b.dataset.p === 'team') { teamFromMsg = false; openTeam(); }
-  };
+    } else if (a === 'via') {
+      sendVia = sendVia === 'wa' ? 'sms' : 'wa'; try { localStorage.setItem('oaf-via-v1', sendVia); } catch {}
+      paintChatHead(); toast(sendVia === 'wa' ? 'Sending via WhatsApp. Pick the group when it opens.' : 'Sending via Messages to the people you choose.');
+    } else if (a === 'team') { teamFromMsg = false; openTeam(); }
+  }
+  $('#apanel').onclick = e => { const b = e.target.closest('[data-a]'); if (b) doAction(b.dataset.a); };
   $('#inCancel').onclick = () => $('#inBg').classList.remove('open');
   $('#inBg').onclick = e => { if (e.target.id === 'inBg') $('#inBg').classList.remove('open'); };
   $('#inSave').onclick = () => {
     const text = $('#inText').value.trim(); if (!text) { $('#inText').focus(); return; }
-    logMsg(curJob, 'in', text, { who: $('#inWho').value }); $('#inBg').classList.remove('open'); render();
+    const parsed = parseWhatsApp(text);
+    if (parsed.length) {
+      parsed.slice(0, 300).forEach(m => logMsg(curJob, OWNER && m.who.toLowerCase().includes(OWNER.toLowerCase()) ? 'out' : 'in', m.text, { who: m.who, at: m.at, via: 'wa' }));
+      toast(`Added ${parsed.length} ${parsed.length === 1 ? 'message' : 'messages'} from WhatsApp`);
+    } else logMsg(curJob, 'in', text, { who: $('#inWho').value });
+    $('#inBg').classList.remove('open'); render();
   };
+  // WhatsApp-like gestures on bubbles: double-tap = heart, long-press = delete
+  const bubOf = e => e.target.closest && e.target.closest('.bub');
+  const findMsg = (id, k) => { const j = jobs[curJob] || {}; return (k === 'note' ? j.notes : j.chat || []).find(x => x.id === id); };
+  function pressStart(e) { const b = bubOf(e); if (!b) return; pressed = false; clearTimeout(pressTimer); pressTimer = setTimeout(() => { pressed = true; if (confirm('Delete this message?')) { const j = jobs[curJob] || {}; if (b.dataset.k === 'note') j.notes = (j.notes || []).filter(x => x.id !== b.dataset.id); else j.chat = (j.chat || []).filter(x => x.id !== b.dataset.id); saveJobs(); render(); } }, 600); }
+  const pressEnd = () => clearTimeout(pressTimer);
+  $('#main').addEventListener('touchstart', pressStart, { passive: true });
+  $('#main').addEventListener('mousedown', pressStart);
+  ['touchend', 'touchmove', 'touchcancel', 'mouseup', 'mouseleave'].forEach(ev => $('#main').addEventListener(ev, pressEnd, { passive: true }));
+  $('#main').addEventListener('click', e => {
+    const b = bubOf(e); if (!b) return;
+    if (pressed) { pressed = false; return; }
+    const now = Date.now();
+    if (lastTap.id === b.dataset.id && now - lastTap.t < 350) {
+      const m = findMsg(b.dataset.id, b.dataset.k); if (m) { m.heart = !m.heart; saveJobs(); render(); }
+      lastTap = { id: '', t: 0 };
+    } else lastTap = { id: b.dataset.id, t: now };
+  });
 
   // ---- new job sold: creates the whole first-48-hours playbook ----
   function setKick(v) {
@@ -573,7 +648,7 @@
   function openEdit(n) {
     const j = jobs[n] || {}; editName = n; editEvery = j.every || 5;
     $('#eTitle').textContent = n;
-    $('#e-addr').value = j.addr || ''; $('#e-upsell').value = j.upsell || '';
+    $('#e-addr').value = j.addr || ''; $('#e-wa').value = j.wa || ''; $('#e-upsell').value = j.upsell || '';
     $('#subRows').innerHTML = ''; const cur = getSubs(j); (cur.length ? cur : [{}]).forEach(addSubRow);
     paintEvery(); $('#editBg').classList.add('open');
   }
@@ -594,7 +669,7 @@
   $('#editBg').onclick = e => { if (e.target.id === 'editBg') closeEdit(); };
   $('#everyChips').onclick = e => { const c = e.target.closest('.chip'); if (c) { editEvery = +c.dataset.e; paintEvery(); } };
   $('#eSave').onclick = () => {
-    jobs[editName] = { ...(jobs[editName] || {}), addr: $('#e-addr').value.trim(), sub: undefined, phone: undefined,
+    jobs[editName] = { ...(jobs[editName] || {}), addr: $('#e-addr').value.trim(), wa: $('#e-wa').value.trim(), sub: undefined, phone: undefined,
       subs: [...document.querySelectorAll('#subRows .subrow')].map(r => ({ name: r.querySelector('.s-name').value.trim(), trade: r.querySelector('.s-trade').value.trim(), phone: r.querySelector('.s-phone').value.trim() })).filter(x => x.name),
       upsell: parseInt($('#e-upsell').value.replace(/[^0-9]/g, ''), 10) || 0, every: editEvery };
     saveJobs(); closeEdit(); render();
@@ -660,6 +735,10 @@
     if (el) {
       const act = el.dataset.act;
       if (act === 'collapse') { const p = el.dataset.p; collapsed.has(p) ? collapsed.delete(p) : collapsed.add(p); return render(); }
+      if (act === 'addto') return openSheet(null, el.dataset.p);
+      if (act === 'openjob') { curJob = el.dataset.p; jobTab = 'chat'; view = 'job'; render(); return; }
+      if (act === 'jtab') { jobTab = el.dataset.tab; render(); if (jobTab !== 'chat') window.scrollTo(0, 0); return; }
+      if (act === 'navjob') return void window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent((jobs[curJob] || {}).addr || ''), '_blank');
       if (act === 'addto') return openSheet(null, el.dataset.p);
       if (act === 'openjob') { curJob = el.dataset.p; jobTab = 'chat'; view = 'job'; render(); return; }
       if (act === 'jtab') { jobTab = el.dataset.tab; render(); if (jobTab !== 'chat') window.scrollTo(0, 0); return; }
