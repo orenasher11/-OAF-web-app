@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '19';
+  const APP_VERSION = '20';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   const OWNER = 'Oren';
   const CATS = [
@@ -457,7 +457,12 @@
       const needV = visitList().filter(v => v.state === 'late').length;
       if (needV && filter === 'all') html = `<button class="alert" data-go="visits">🚗 <b>${needV}</b> ${needV === 1 ? 'job needs' : 'jobs need'} a site visit<span>Open ›</span></button>` + html;
       const evlink = `<button class="evlink" data-go="evening">🌙 <b>Evening review</b><span>Open ›</span></button>`;
-      if (!html) html = `<div class="empty"><div class="big">✓</div>${filter === 'all' ? 'Nothing due. Tap + to add a task.' : 'Nothing here.'}</div>`;
+      if (!html) html = !tasks.length && !Object.keys(jobs).length && filter === 'all'
+        ? `<div class="welcome"><div class="wbig">👋</div><h3>Welcome</h3><p>This is a work-in-progress app for managing jobs, subs, and the team chat. Take a look around and tell us what you think.</p>
+            <button class="jbtn primary wide" data-act="demoload">✨ Load sample jobs</button>
+            <button class="jbtn wide" data-act="feedback">💬 Send feedback</button>
+            <div class="hint">Sample jobs are made-up examples. You can remove them anytime from the Projects tab.</div></div>`
+        : `<div class="empty"><div class="big">✓</div>${filter === 'all' ? 'Nothing due. Tap + to add a task.' : 'Nothing here.'}</div>`;
       if (filter === 'all') { const k = html.startsWith('<button class="alert"') ? html.indexOf('</button>') + 9 : 0; html = html.slice(0, k) + evlink + html.slice(k); }
     } else if (view === 'visits') {
       $('#h1').textContent = 'Site Visits';
@@ -557,6 +562,8 @@
         <button id="exportBtn">⬇ Back up</button>
         <button id="importBtn">⬆ Restore</button>
         <button id="teamBtn">👥 My team</button>
+        <button id="demoBtn">${Object.values(jobs).some(j => j && j.demo) ? '🧹 Remove sample jobs' : '✨ Add sample jobs'}</button>
+        <button id="fbBtn">💬 Send feedback</button>
         <button id="updateBtn">🔄 Update app</button>
         <button id="clearDone">🧹 Clear completed</button>
         <input type="file" id="importFile" accept="application/json" hidden>
@@ -793,6 +800,55 @@
     } else lastTap = { id: b.dataset.id, t: now };
   });
 
+  // ---- sample jobs (for trying the app) + feedback ----
+  function loadDemo() {
+    const ago = h => new Date(Date.now() - h * 3600000).toISOString(), d = n => addDays(n);
+    const T = (id, title, project, due, extra = {}) => ({ id: 'demo-' + id, title, project, due, done: false, cat: '', star: false, notes: '', demo: true, ...extra });
+    const A = 'Martinez kitchen (Sample)', B = 'Lee bathroom (Sample)', C = 'Cohen ADU (Sample)';
+    const t = [
+      T('a1', 'Find upsell opportunities with Martinez', A, d(0), { star: true, cat: 'visit', ord: 4 }),
+      T('a2', 'Take photos of the site before work starts', A, d(-6), { done: true, doneOn: d(-6), doneAt: ago(150), cat: 'visit', ord: 1, time: '08:00' }),
+      T('a3', 'Sign Martinez on DocuSign with the finance company', A, d(-6), { done: true, doneOn: d(-6), doneAt: ago(149), cat: 'money', ord: 2, time: '08:00' }),
+      T('a4', 'Confirm Carlos started, ask for photos', A, d(-5), { cat: 'call', ord: 5 }),
+      T('a5', 'Order backsplash tile', A, d(2), { cat: 'order' }),
+      T('b1', 'Check permit status', B, d(1), { cat: 'permit' }),
+      T('b2', 'Send final invoice', B, d(3), { cat: 'money', star: true }),
+      T('c1', 'Pick up coffee + donuts, meet Tony at the site', C, d(1), { cat: 'visit', ord: 0, time: '08:00' }),
+      T('c2', 'Find upsell opportunities with Cohen', C, d(1), { cat: 'visit', ord: 4, star: true, time: '08:00' }),
+    ];
+    const jb = {
+      [A]: { demo: true, addr: '123 Main St, Palm Springs, CA', upsell: 30000, last: d(-6), kind: 'visit', every: 5, kick: d(-6),
+        subs: [{ name: 'Carlos', trade: 'Plumber', phone: '760 555 0101' }, { name: 'Mike', trade: 'Electrician', phone: '760 555 0102' }],
+        chat: [{ id: 'demo-m1', at: ago(50), kind: 'out', text: 'Hi team, it\'s ' + OWNER + '. Can you send photos of the current work at Martinez kitchen? Thanks!', to: ['Carlos', 'Mike'] },
+               { id: 'demo-m2', at: ago(48), kind: 'in', who: 'Carlos', text: 'Rough-in is done. Sending photos in a bit. Tile arrives Thursday.', star: true },
+               { id: 'demo-m3', at: ago(47), kind: 'in', who: 'Mike', text: 'Panel upgrade is scheduled for Friday. Customer asked about adding under-cabinet lighting.' },
+               { id: 'demo-m4', at: ago(3), kind: 'out', text: 'Great. Martinez wants a backsplash too. Let\'s price it.' }],
+        notes: [{ id: 'demo-n1', at: ago(30), text: 'Customer mentioned she may want new flooring in the hallway.' }] },
+      [B]: { demo: true, addr: '45 Oak Ave, Barstow, CA', upsell: 12000, last: d(-2), kind: 'photos', every: 5, kick: d(-8),
+        subs: [{ name: 'Dave', trade: 'Tile', phone: '760 555 0103' }],
+        chat: [{ id: 'demo-m5', at: ago(20), kind: 'in', who: 'Dave', text: 'Shower pan is in. Waiting on the inspector.' }] },
+      [C]: { demo: true, addr: '900 Sunset Blvd, San Bernardino, CA', upsell: 45000, kick: d(1), every: 5,
+        subs: [{ name: 'Tony', trade: 'General', phone: '909 555 0104' }], chat: [] },
+    };
+    tasks = [...tasks.filter(x => !x.demo), ...t]; Object.assign(jobs, jb);
+    save(); saveJobs(); view = 'today'; filter = 'all'; render(); window.scrollTo(0, 0);
+    toast('Sample jobs added. Tap Projects to explore.');
+  }
+  function clearDemo() {
+    tasks = tasks.filter(x => !x.demo); Object.keys(jobs).forEach(k => { if (jobs[k] && jobs[k].demo) delete jobs[k]; });
+    save(); saveJobs(); render(); toast('Sample jobs removed');
+  }
+  function openFeedback() { $('#fbText').value = ''; $('#fbBg').classList.add('open'); setTimeout(() => $('#fbText').focus(), 80); }
+  const fbBody = () => `Feedback on the app (version ${APP_VERSION})${$('#fbWho').value.trim() ? ' from ' + $('#fbWho').value.trim() : ''}:\n\n${$('#fbText').value.trim()}`;
+  $('#fbCancel').onclick = () => $('#fbBg').classList.remove('open');
+  $('#fbBg').onclick = e => { if (e.target.id === 'fbBg') $('#fbBg').classList.remove('open'); };
+  $('#fbCopy').onclick = async () => { try { await navigator.clipboard.writeText(fbBody()); toast('Copied'); } catch { toast('Could not copy'); } };
+  $('#fbSend').onclick = () => {
+    if (!$('#fbText').value.trim()) { $('#fbText').focus(); return; }
+    if (navigator.share) navigator.share({ title: 'App feedback', text: fbBody() }).catch(() => {});
+    else location.href = 'mailto:?subject=' + encodeURIComponent('App feedback') + '&body=' + encodeURIComponent(fbBody());
+  };
+
   // ---- new job sold: creates the whole first-48-hours playbook ----
   function setKick(v) {
     $('#j-kick').value = v || '';
@@ -923,6 +979,8 @@
       if (act === 'collapse') { const p = el.dataset.p; collapsed.has(p) ? collapsed.delete(p) : collapsed.add(p); return render(); }
       if (act === 'addto') return openSheet(null, el.dataset.p);
       if (act === 'openjob') { curJob = el.dataset.p; jobTab = 'chat'; tabHist = []; chatSearch = false; view = 'job'; render(); return; }
+      if (act === 'demoload') return loadDemo();
+      if (act === 'feedback') return openFeedback();
       if (act === 'jtab') return goTab(el.dataset.tab);
       if (act === 'back') return backTab();
       if (act === 'callall') return callPeople(curJob);
@@ -987,6 +1045,8 @@
       a.download = `tasks-backup-${todayISO()}.json`; a.click();
     } else if (id === 'importBtn') $('#importFile').click();
     else if (id === 'teamBtn') openTeam();
+    else if (id === 'demoBtn') { Object.values(jobs).some(j => j && j.demo) ? clearDemo() : loadDemo(); }
+    else if (id === 'fbBtn') openFeedback();
     else if (id === 'updateBtn') {
       toast('Updating...');
       const done = () => location.reload();

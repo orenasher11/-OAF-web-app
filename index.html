@@ -9,8 +9,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.svg">
 <title>My Tasks</title>
-<link rel="stylesheet" href="assets/base.css?v=19">
-<link rel="stylesheet" href="assets/theme.css?v=19">
+<link rel="stylesheet" href="assets/base.css?v=20">
+<link rel="stylesheet" href="assets/theme.css?v=20">
 </head>
 <body class="blueprint">
 <div class="app">
@@ -211,6 +211,22 @@
     <div class="hint">This opens your Messages app with everyone and the text filled in. You tap send.</div>
   </div>
 </div>
+<div class="sheet-bg" id="fbBg">
+  <div class="sheet" role="dialog">
+    <div class="grab"></div>
+    <h2>Send feedback</h2>
+    <p class="help">What do you like? What is confusing? What is missing? Anything helps.</p>
+    <label for="fbWho">Your name (optional)</label>
+    <input id="fbWho" autocomplete="name" placeholder="e.g. Dan">
+    <label for="fbText">Your feedback</label>
+    <textarea id="fbText" class="msgtext" placeholder="e.g. I'd like to see the upsell total on the first screen..."></textarea>
+    <div class="actions">
+      <button class="btn ghost" id="fbCancel">Cancel</button>
+      <button class="btn ghost" id="fbCopy">Copy</button>
+      <button class="btn primary" id="fbSend">Share</button>
+    </div>
+  </div>
+</div>
 <div class="sheet-bg" id="inBg">
   <div class="sheet" role="dialog">
     <div class="grab"></div>
@@ -237,7 +253,7 @@
 <script>
 // Safety net: shows a repair bar if the app fails to start or throws an error. Never deletes your saved tasks.
 (function () {
-  var EXPECT = '19', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
+  var EXPECT = '20', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
   function show(t) { try { msg.textContent = t; bar.hidden = false; } catch (e) {} }
   window.__oafNotify = show;
   window.addEventListener('error', function (e) { if (e.message && /ResizeObserver|Script error/.test(e.message)) return; show('Error: ' + (e.message || 'unknown') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
@@ -263,6 +279,6 @@
   }, 3500);
 })();
 </script>
-<script src="assets/app.js?v=19"></script>
+<script src="assets/app.js?v=20"></script>
 </body>
 </html>
