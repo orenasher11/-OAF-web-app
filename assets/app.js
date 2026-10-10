@@ -10,7 +10,7 @@
   ];
   const catOf = id => CATS.find(c => c.id === id);
 
-  let tasks = [], view = 'today', filter = 'all', editingId = null;
+  let tasks = [], view = 'today', filter = 'all', editingId = null, curJob = '';
   let formCat = '', formStar = false, lastUndo = null, toastTimer = null;
   const collapsed = new Set();
   const $ = s => document.querySelector(s);
@@ -140,27 +140,43 @@
         if (k !== last) { html += `<div class="section-title">${t.due ? fmtDate(t.due) : 'No date'}</div>`; last = k; }
         html += taskHTML(t);
       });
+    } else if (view === 'job') {
+      const n = curJob, j = jobs[n] || {};
+      $('#h1').textContent = j.addr || n;
+      $('#sub').textContent = [j.addr ? n : '', j.sub ? 'Sub: ' + j.sub : ''].filter(Boolean).join(' · ') || 'Tap Edit to add the address and sub';
+      const mine = open.filter(t => t.project === n);
+      const doneT = tasks.filter(t => t.done && t.project === n);
+      html += `<div class="jobactions">
+        <button class="jbtn primary" data-act="addto" data-p="${esc(n)}">＋ Add task</button>
+        <button class="jbtn" data-act="editjobd">✎ Edit job</button>
+        <button class="jbtn" data-act="upsell" data-p="${esc(n)}">${j.upsell ? money(j.upsell) + ' upsell' : '+ Upsell $'}</button>
+      </div>`;
+      html += mine.length ? mine.map(taskHTML).join('') : `<div class="empty"><div class="big">✓</div>No open tasks on this job.</div>`;
+      if (doneT.length) html += `<div class="section-title">Done (${doneT.length})</div>` + doneT.map(taskHTML).join('');
     } else {
       $('#h1').textContent = 'Projects';
-      $('#sub').textContent = 'Open tasks by customer';
-      const groups = {};
-      open.forEach(t => (groups[t.project || 'No project'] ||= []).push(t));
-      const names = Object.keys(groups).sort((a, b) => a.localeCompare(b));
-      if (!names.length) html = `<div class="empty"><div class="big">🏗️</div>No open tasks.</div>`;
-      names.forEach(n => {
-        const g = groups[n], late = g.filter(t => t.due && t.due < t0).length, shut = collapsed.has(n);
-        html += `<div class="pgroup">
-          <div class="phead">
-            <button class="ptoggle" data-act="collapse" data-p="${esc(n)}">
-              <span class="pname">${esc(n)}</span>
-              <span class="pcount">${g.length} open${late ? ` · <em>${late} late</em>` : ''}</span>
-              <span class="chev">${shut ? '▸' : '▾'}</span>
-            </button>
-            <button class="pup ${jobs[n]?.upsell ? 'set' : ''}" data-act="upsell" data-p="${n === 'No project' ? '' : esc(n)}">${jobs[n]?.upsell ? money(jobs[n].upsell) + ' upsell' : '+ upsell $'}</button>
-            <button class="padd" data-act="addto" data-p="${n === 'No project' ? '' : esc(n)}" aria-label="Add task to ${esc(n)}">+</button>
-          </div>
-          ${shut ? '' : g.map(taskHTML).join('')}
-        </div>`;
+      const names = activeProjects();
+      $('#sub').textContent = names.length ? `${names.length} active ${names.length === 1 ? 'job' : 'jobs'}` : 'No active jobs yet';
+      const cityOf = n => { const a = (jobs[n]?.addr || '').split(',').map(x => x.trim()).filter(Boolean); return a.length > 1 ? a[1] : (a.length ? 'Other' : ''); };
+      const sections = {};
+      names.forEach(n => (sections[cityOf(n) || 'No address yet'] ||= []).push(n));
+      const secNames = Object.keys(sections).sort((a, b) => a === 'No address yet' ? 1 : b === 'No address yet' ? -1 : a.localeCompare(b));
+      if (!names.length) html = `<div class="empty"><div class="big">📁</div>No jobs yet. Tap New job sold to add one.</div>`;
+      secNames.forEach(city => {
+        html += `<div class="section-title">${esc(city)}</div>`;
+        sections[city].sort((a, b) => (jobs[a]?.addr || a).localeCompare(jobs[b]?.addr || b)).forEach(n => {
+          const j = jobs[n] || {}, mine = open.filter(t => t.project === n);
+          const late = mine.filter(t => t.due && t.due < t0).length, nxt = mine[0];
+          html += `<button class="folder ${late ? 'hasLate' : ''}" data-act="openjob" data-p="${esc(n)}">
+            <span class="ficon">📁</span>
+            <span class="fbody">
+              <span class="faddr ${j.addr ? '' : 'none'}">${esc(j.addr || 'No address yet')}</span>
+              <span class="fname">${esc(n)}${j.sub ? ' · ' + esc(j.sub) : ''}</span>
+              <span class="fmeta">${mine.length} open${late ? ` · <em>${late} late</em>` : nxt && nxt.due ? ' · next ' + fmtDate(nxt.due) : ''}</span>
+            </span>
+            <span class="fright">${j.upsell ? `<span class="pup set">${money(j.upsell)}</span>` : ''}<i>›</i></span>
+          </button>`;
+        });
       });
       html += `<div class="tools">
         <button id="exportBtn">⬇ Back up</button>
@@ -170,13 +186,14 @@
       </div><div class="hint">Your tasks are stored on this phone only. Back up now and then.</div>`;
     }
     $('#stats').innerHTML = stats; $('#stats').hidden = !stats;
-    $('#jobbar').hidden = view === 'upcoming' || view === 'visits';
+    $('#jobbar').hidden = view === 'upcoming' || view === 'visits' || view === 'job';
+    $('#back').hidden = view !== 'job';
     const lateN = visitList().filter(v => v.state === 'late').length;
     $('#vbadge').textContent = lateN || ''; $('#vbadge').hidden = !lateN;
     const inPlay = [...new Set(open.map(t => t.project).filter(Boolean))].reduce((a, n) => a + (jobs[n]?.upsell || 0), 0);
     $('#pot').innerHTML = inPlay ? `Upsell potential in play <b>${money(inPlay)}</b>` : 'Add upsell potential to each job';
     $('#main').innerHTML = html;
-    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === (view === 'job' ? 'projects' : view)));
     $('#projList').innerHTML = [...new Set(tasks.map(t => t.project).filter(Boolean))].map(p => `<option value="${esc(p)}">`).join('');
   }
 
@@ -285,7 +302,8 @@
   $('#j-kick').onchange = e => setKick(e.target.value);
 
   // ---- events ----
-  $('#fab').onclick = () => openSheet();
+  $('#fab').onclick = () => openSheet(null, view === 'job' ? curJob : '');
+  $('#back').onclick = () => { view = 'projects'; render(); window.scrollTo(0, 0); };
   $('#cancelBtn').onclick = closeSheet;
   $('#saveBtn').onclick = saveSheet;
   $('#bg').onclick = e => { if (e.target.id === 'bg') closeSheet(); };
@@ -329,6 +347,8 @@
       const act = el.dataset.act;
       if (act === 'collapse') { const p = el.dataset.p; collapsed.has(p) ? collapsed.delete(p) : collapsed.add(p); return render(); }
       if (act === 'addto') return openSheet(null, el.dataset.p);
+      if (act === 'openjob') { curJob = el.dataset.p; view = 'job'; render(); window.scrollTo(0, 0); return; }
+      if (act === 'editjobd') return openEdit(curJob);
       if (act === 'upsell') {
         const n = el.dataset.p; if (!n) return;
         const v = prompt(`Upsell potential for ${n} (in dollars, e.g. 30000):`, jobs[n]?.upsell || '');

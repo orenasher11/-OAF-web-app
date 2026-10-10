@@ -105,3 +105,18 @@ nav button{position:relative}
 .vbtns button{flex:1 1 auto;min-height:42px;border-radius:var(--radius-sm);border:var(--border) solid var(--line);background:var(--bg);font-size:13.5px;font-weight:700;padding:0 10px}
 .vbtns button[data-act=visited]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .vbtns button[data-act=editjob]{flex:0 0 44px}
+
+.back{background:none;border:0;padding:0 0 8px;color:var(--head-sub);font-size:15px;font-weight:700}
+.folder{width:100%;display:flex;align-items:center;gap:12px;text-align:left;background:var(--surface);border:var(--border) solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:8px;box-shadow:var(--shadow)}
+.folder.hasLate{border-left:6px solid var(--danger)}
+.ficon{font-size:30px;flex:none}
+.fbody{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.faddr{font-weight:800;font-size:16.5px;font-family:var(--font-head);word-break:break-word}
+.faddr.none{color:var(--muted);font-weight:600;font-style:italic}
+.fname{font-size:14px;color:var(--muted)}
+.fmeta{font-size:12.5px;color:var(--muted)}.fmeta em{color:var(--danger);font-style:normal;font-weight:700}
+.fright{display:flex;align-items:center;gap:8px;flex:none}
+.fright i{font-style:normal;font-size:24px;color:var(--muted)}
+.jobactions{display:flex;gap:8px;margin:16px 0 4px;flex-wrap:wrap}
+.jbtn{flex:1 1 auto;min-height:44px;border-radius:var(--radius-sm);border:var(--border) solid var(--line);background:var(--surface);font-weight:700;font-size:14px;padding:0 12px}
+.jbtn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
