@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '17';
+  const APP_VERSION = '18';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   const OWNER = 'Oren';
   const CATS = [
@@ -14,7 +14,11 @@
   let tasks = [], view = 'today', filter = 'all', editingId = null, curJob = '', jobTab = 'chat';
   let formCat = '', formStar = false, lastUndo = null, toastTimer = null;
   const collapsed = new Set();
-  const $ = s => document.querySelector(s);
+  const NOOP = new Proxy(function () {}, {
+    get: (t, k) => k === 'classList' ? { add() {}, remove() {}, toggle() {}, contains() { return false; } } : k === 'style' ? {} : k === 'dataset' ? {} : k === 'value' ? '' : k === 'hidden' ? true : NOOP,
+    set: () => true, apply: () => NOOP,
+  });
+  const $ = s => document.querySelector(s) || NOOP;   // a missing element can never stop the app from starting
 
   try { tasks = JSON.parse(localStorage.getItem(KEY)) || []; } catch { tasks = []; }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(tasks)); } catch {} };
@@ -914,9 +918,10 @@
   $('#sumShare').onclick = () => { const t = $('#sumText').textContent; if (navigator.share) navigator.share({ text: t }).catch(() => {}); else $('#sumCopy').click(); };
   if (location.hash === '#evening') view = 'evening';
   render();
+  window.__oafV = APP_VERSION; window.__oafReady = true;
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     const hadController = !!navigator.serviceWorker.controller; let reloaded = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; window.__oafNotify && window.__oafNotify('A new version is ready. Tap Reload to update.'); } });
     navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
       reg.update().catch(() => {});
       document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });

@@ -9,8 +9,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.svg">
 <title>My Tasks</title>
-<link rel="stylesheet" href="assets/base.css">
-<link rel="stylesheet" href="assets/theme.css">
+<link rel="stylesheet" href="assets/base.css?v=18">
+<link rel="stylesheet" href="assets/theme.css?v=18">
 </head>
 <body class="blueprint">
 <div class="app">
@@ -230,25 +230,39 @@
   <div id="fixmsg">Something went wrong.</div>
   <div class="fixbtns">
     <button id="fixReload">Reload</button>
+    <button id="fixSave">Save my data</button>
     <button id="fixReset">Fix &amp; update</button>
   </div>
 </div>
 <script>
-// Safety net: shows a repair bar if the app fails to start or throws an error. Never touches your saved tasks.
+// Safety net: shows a repair bar if the app fails to start or throws an error. Never deletes your saved tasks.
 (function () {
-  var bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
+  var EXPECT = '18', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
   function show(t) { try { msg.textContent = t; bar.hidden = false; } catch (e) {} }
-  window.addEventListener('error', function (e) { show('Error: ' + (e.message || 'unknown') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
-  window.addEventListener('unhandledrejection', function (e) { var r = e.reason; show('Error: ' + ((r && r.message) || r || 'unknown')); });
+  window.__oafNotify = show;
+  window.addEventListener('error', function (e) { if (e.message && /ResizeObserver|Script error/.test(e.message)) return; show('Error: ' + (e.message || 'unknown') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
+  window.addEventListener('unhandledrejection', function (e) { var r = e.reason; if (r && /AbortError|NotAllowedError/.test(String(r.name || r))) return; show('Error: ' + ((r && r.message) || r || 'unknown')); });
   document.getElementById('fixReload').onclick = function () { location.reload(); };
+  document.getElementById('fixSave').onclick = function () {
+    try {
+      var g = function (k) { try { return JSON.parse(localStorage.getItem(k)) || null; } catch (e) { return null; } };
+      var data = { tasks: g('oaf-tasks-v1') || [], jobs: g('oaf-jobs-v1') || {}, team: g('oaf-team-v1') || [] };
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+      a.download = 'tasks-backup-' + new Date().toISOString().slice(0, 10) + '.json'; a.click();
+    } catch (e) { show('Could not save: ' + e.message); }
+  };
   document.getElementById('fixReset').onclick = function () {
     var done = function () { location.replace(location.pathname + '?r=' + Date.now()); };
     var p = navigator.serviceWorker ? navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }) : Promise.resolve();
     p.then(function () { return window.caches ? caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }) : 0; }).then(done, done);
   };
-  setTimeout(function () { var h = document.getElementById('h1'); if (h && !h.textContent) show('The app did not start. Tap Fix & update (your tasks are safe).'); }, 3000);
+  setTimeout(function () {
+    if (!window.__oafReady) show('The app did not start. Tap Fix & update (your tasks are safe).');
+    else if (window.__oafV !== EXPECT) show('Parts of the app are out of date. Tap Fix & update (your tasks are safe).');
+  }, 3500);
 })();
 </script>
-<script src="assets/app.js"></script>
+<script src="assets/app.js?v=18"></script>
 </body>
 </html>
