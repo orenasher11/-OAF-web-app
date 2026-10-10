@@ -428,14 +428,16 @@
     document.querySelectorAll('#kickChips .chip').forEach(c => c.classList.toggle('on', !!v && addDays(+c.dataset.d) === v));
   }
   function openJob() {
-    ['#j-name', '#j-sub', '#j-phone', '#j-addr', '#j-upsell'].forEach(i => $(i).value = '');
+    ['#j-name', '#j-sub', '#j-phone', '#j-addr', '#j-upsell'].forEach(i => { $(i).value = ''; $(i).classList.remove('err'); });
     setKick(addDays(1)); $('#j-time').value = '08:00';
     $('#jobBg').classList.add('open'); setTimeout(() => $('#j-addr').focus(), 60);
   }
   const closeJob = () => $('#jobBg').classList.remove('open');
   function saveJob() {
-    const name = $('#j-name').value.trim();
-    if (!name) { $('#j-name').focus(); return; }
+    const name = $('#j-name').value.trim(), addrIn = $('#j-addr').value.trim();
+    ['#j-addr', '#j-name'].forEach(i => $(i).classList.remove('err'));
+    if (!addrIn) { $('#j-addr').classList.add('err'); $('#j-addr').focus(); toast('Enter the job address'); return; }
+    if (!name) { $('#j-name').classList.add('err'); $('#j-name').focus(); toast('Enter the customer name'); return; }
     const kick = $('#j-kick').value || addDays(1), time = $('#j-time').value || '08:00';
     const sub = $('#j-sub').value.trim(), amt = parseInt($('#j-upsell').value.replace(/[^0-9]/g, ''), 10) || 0;
     const newSubs = sub ? [{ name: sub, phone: $('#j-phone').value.trim() }] : [];
