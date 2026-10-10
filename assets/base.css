@@ -87,3 +87,21 @@ textarea{min-height:72px;resize:vertical}
 .pup.set{border-style:solid;border-color:var(--accent);color:var(--accent-text,var(--accent))}
 .help{margin:0 0 4px;font-size:13.5px;color:var(--muted)}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+nav button{position:relative}
+.nbadge{position:absolute;top:4px;left:calc(50% + 6px);min-width:18px;height:18px;border-radius:9px;background:var(--danger);color:#fff;font:700 11px/18px var(--font);font-style:normal;text-align:center;padding:0 4px}
+.alert{width:100%;display:flex;align-items:center;gap:8px;margin-top:16px;padding:12px 14px;border-radius:var(--radius);border:var(--border) solid var(--danger);background:color-mix(in srgb,var(--danger) 10%,var(--surface));color:var(--text);text-align:left;font-size:15px}
+.alert span{margin-left:auto;font-weight:700;color:var(--danger)}
+.vcard{background:var(--surface);border:var(--border) solid var(--line);border-left:6px solid var(--ok);border-radius:var(--radius);padding:14px;margin-top:10px;box-shadow:var(--shadow)}
+.vcard.late{border-left-color:var(--danger)}.vcard.soon{border-left-color:#f5a524}
+.vtop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.vname{font-weight:800;font-size:17px;font-family:var(--font-head)}
+.vsub{font-size:13px;color:var(--muted);margin-top:2px}
+.vbadge{flex:none;font-size:12px;font-weight:800;padding:4px 10px;border-radius:999px;background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
+.vcard.late .vbadge{background:color-mix(in srgb,var(--danger) 14%,transparent);color:var(--danger)}
+.vcard.soon .vbadge{background:color-mix(in srgb,#f5a524 20%,transparent);color:var(--warn)}
+.vmeta{display:flex;gap:10px;align-items:center;margin-top:8px;font-size:13px;color:var(--muted);flex-wrap:wrap}
+.vbtns{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
+.vbtns button{flex:1 1 auto;min-height:42px;border-radius:var(--radius-sm);border:var(--border) solid var(--line);background:var(--bg);font-size:13.5px;font-weight:700;padding:0 10px}
+.vbtns button[data-act=visited]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.vbtns button[data-act=editjob]{flex:0 0 44px}

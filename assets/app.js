@@ -22,6 +22,23 @@
   try { jobs = JSON.parse(localStorage.getItem(JOBS_KEY)) || {}; } catch { jobs = {}; }
   const saveJobs = () => { try { localStorage.setItem(JOBS_KEY, JSON.stringify(jobs)); } catch {} };
   const money = n => n >= 1000 ? '$' + (n / 1000).toFixed(n % 1000 ? 1 : 0).replace(/\.0$/, '') + 'k' : '$' + n;
+  const daysBetween = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 864e5);
+  function visitInfo(name) {
+    const j = jobs[name] || {}, every = j.every || 5;
+    const next = j.last ? addDays(every, j.last) : (j.kick || null);
+    let state = 'soon', diff = null;
+    if (next) { diff = daysBetween(todayISO(), next); state = diff < 0 ? 'late' : diff <= 1 ? 'soon' : 'ok'; }
+    return { j, every, next, diff, state };
+  }
+  const agoText = d => { const n = daysBetween(d, todayISO()); return n <= 0 ? 'Today' : n === 1 ? 'Yesterday' : n + ' days ago'; };
+  const nextText = v => v.diff === null ? 'No visit logged yet' : v.diff < 0 ? `Overdue ${-v.diff}d` : v.diff === 0 ? 'Due today' : v.diff === 1 ? 'Due tomorrow' : `Due in ${v.diff} days`;
+  const activeProjects = () => [...new Set(tasks.filter(t => !t.done && t.project).map(t => t.project))];
+  function visitList() {
+    const order = { late: 0, soon: 1, ok: 2 };
+    return activeProjects().map(n => ({ n, ...visitInfo(n) }))
+      .sort((a, b) => order[a.state] - order[b.state] || (b.j.upsell || 0) - (a.j.upsell || 0) || a.n.localeCompare(b.n));
+  }
+  const smsHref = (phone, body) => `sms:${phone || ''}${/iPhone|iPad|Mac/.test(navigator.userAgent) ? '&' : '?'}body=${encodeURIComponent(body)}`;
   function fmtTime(t) {
     if (!t) return '';
     const [h, m] = t.split(':').map(Number);
@@ -83,7 +100,35 @@
       if (filter === 'all' || filter === 'overdue') if (overdue.length) html += `<div class="section-title overdue">Overdue</div>` + overdue.map(taskHTML).join('');
       if (filter === 'all' || filter === 'today') if (today.length) html += `<div class="section-title">Due today</div>` + today.map(taskHTML).join('');
       if (filter === 'all' || filter === 'done') if (doneToday.length) html += `<div class="section-title">Done today</div>` + doneToday.map(taskHTML).join('');
+      const needV = visitList().filter(v => v.state === 'late').length;
+      if (needV && filter === 'all') html = `<button class="alert" data-go="visits">🚗 <b>${needV}</b> ${needV === 1 ? 'job needs' : 'jobs need'} a site visit<span>Open ›</span></button>` + html;
       if (!html) html = `<div class="empty"><div class="big">✓</div>${filter === 'all' ? 'Nothing due. Tap + to add a task.' : 'Nothing here.'}</div>`;
+    } else if (view === 'visits') {
+      $('#h1').textContent = 'Site Visits';
+      const list = visitList();
+      const cnt = k => list.filter(v => v.state === k).length;
+      $('#sub').textContent = cnt('late') ? `${cnt('late')} ${cnt('late') === 1 ? 'job is' : 'jobs are'} overdue for a visit` : 'Every job is on track';
+      const chip = (k, n, l, cls) => `<button class="stat ${cls} ${filter === k ? 'on' : ''}" data-filter="${k}"><b>${n}</b><span>${l}</span></button>`;
+      stats = chip('late', cnt('late'), 'Overdue', 'bad') + chip('soon', cnt('soon'), 'Due soon', 'mid') + chip('ok', cnt('ok'), 'On track', 'good');
+      const shown = list.filter(v => filter === 'all' || v.state === filter);
+      if (!shown.length) html = `<div class="empty"><div class="big">🚗</div>${list.length ? 'Nothing here.' : 'No active jobs yet. Tap New job sold to add one.'}</div>`;
+      shown.forEach(v => {
+        const up = v.j.upsell ? `<span class="pup set">${money(v.j.upsell)} upsell</span>` : '';
+        html += `<div class="vcard ${v.state}" data-p="${esc(v.n)}">
+          <div class="vtop">
+            <div class="vtitle"><div class="vname">${esc(v.n)}</div><div class="vsub">${esc(v.j.addr || '') || (v.j.sub ? 'Sub: ' + esc(v.j.sub) : 'Add address and sub with ✎')}</div></div>
+            <span class="vbadge">${nextText(v)}</span>
+          </div>
+          <div class="vmeta"><span>Last: ${v.j.last ? agoText(v.j.last) + ' · ' + (v.j.kind === 'photos' ? 'photos' : 'on site') : 'none logged'}</span>${up}</div>
+          <div class="vbtns">
+            <button data-act="visited">✓ Visited</button>
+            <button data-act="photosin">📷 Photos in</button>
+            <button data-act="asksub">💬 Ask sub</button>
+            ${v.j.addr ? '<button data-act="navto">🧭 Go</button>' : ''}
+            <button data-act="editjob" aria-label="Edit job">✎</button>
+          </div>
+        </div>`;
+      });
     } else if (view === 'upcoming') {
       $('#h1').textContent = 'Upcoming';
       $('#sub').textContent = 'What is coming up next';
@@ -125,7 +170,9 @@
       </div><div class="hint">Your tasks are stored on this phone only. Back up now and then.</div>`;
     }
     $('#stats').innerHTML = stats; $('#stats').hidden = !stats;
-    $('#jobbar').hidden = view === 'upcoming';
+    $('#jobbar').hidden = view === 'upcoming' || view === 'visits';
+    const lateN = visitList().filter(v => v.state === 'late').length;
+    $('#vbadge').textContent = lateN || ''; $('#vbadge').hidden = !lateN;
     const inPlay = [...new Set(open.map(t => t.project).filter(Boolean))].reduce((a, n) => a + (jobs[n]?.upsell || 0), 0);
     $('#pot').innerHTML = inPlay ? `Upsell potential in play <b>${money(inPlay)}</b>` : 'Add upsell potential to each job';
     $('#main').innerHTML = html;
@@ -182,7 +229,7 @@
     document.querySelectorAll('#kickChips .chip').forEach(c => c.classList.toggle('on', !!v && addDays(+c.dataset.d) === v));
   }
   function openJob() {
-    ['#j-name', '#j-sub', '#j-upsell'].forEach(i => $(i).value = '');
+    ['#j-name', '#j-sub', '#j-phone', '#j-addr', '#j-upsell'].forEach(i => $(i).value = '');
     setKick(addDays(1)); $('#j-time').value = '08:00';
     $('#jobBg').classList.add('open'); setTimeout(() => $('#j-name').focus(), 60);
   }
@@ -206,10 +253,30 @@
     plan.forEach(([off, title, cat, star, timed], i) => tasks.push({
       id: uid(), done: false, title, project: name, due: addDays(off, kick), cat, star, notes: '', ord: i, ...(timed ? { time } : {}),
     }));
-    jobs[name] = { ...(jobs[name] || {}), upsell: amt, sub }; saveJobs(); save();
+    jobs[name] = { ...(jobs[name] || {}), upsell: amt, sub, phone: $('#j-phone').value.trim(), addr: $('#j-addr').value.trim(), kick, every: jobs[name]?.every || 5 };
+    saveJobs(); save();
     closeJob(); view = 'today'; filter = 'all'; render(); window.scrollTo(0, 0);
     toast(`${plan.length} tasks created for ${name}`);
   }
+  // ---- edit job details ----
+  let editName = '', editEvery = 5;
+  function paintEvery() { document.querySelectorAll('#everyChips .chip').forEach(c => c.classList.toggle('on', +c.dataset.e === editEvery)); }
+  function openEdit(n) {
+    const j = jobs[n] || {}; editName = n; editEvery = j.every || 5;
+    $('#eTitle').textContent = n;
+    $('#e-addr').value = j.addr || ''; $('#e-sub').value = j.sub || ''; $('#e-phone').value = j.phone || ''; $('#e-upsell').value = j.upsell || '';
+    paintEvery(); $('#editBg').classList.add('open');
+  }
+  const closeEdit = () => $('#editBg').classList.remove('open');
+  $('#eCancel').onclick = closeEdit;
+  $('#editBg').onclick = e => { if (e.target.id === 'editBg') closeEdit(); };
+  $('#everyChips').onclick = e => { const c = e.target.closest('.chip'); if (c) { editEvery = +c.dataset.e; paintEvery(); } };
+  $('#eSave').onclick = () => {
+    jobs[editName] = { ...(jobs[editName] || {}), addr: $('#e-addr').value.trim(), sub: $('#e-sub').value.trim(), phone: $('#e-phone').value.trim(),
+      upsell: parseInt($('#e-upsell').value.replace(/[^0-9]/g, ''), 10) || 0, every: editEvery };
+    saveJobs(); closeEdit(); render();
+  };
+
   $('#newJobBtn').onclick = openJob;
   $('#jCancel').onclick = closeJob;
   $('#jSave').onclick = saveJob;
@@ -241,7 +308,23 @@
   };
 
   $('#main').onclick = e => {
+    const go = e.target.closest('[data-go]');
+    if (go) { view = go.dataset.go; filter = 'all'; render(); window.scrollTo(0, 0); return; }
     const el = e.target.closest('[data-act]');
+    const vc = el && el.closest('.vcard');
+    if (vc) {
+      const n = vc.dataset.p, j = jobs[n] = jobs[n] || {}, act = el.dataset.act;
+      if (act === 'visited' || act === 'photosin') {
+        const prev = { last: j.last, kind: j.kind };
+        j.last = todayISO(); j.kind = act === 'photosin' ? 'photos' : 'visit'; saveJobs(); render();
+        toast(`${act === 'photosin' ? 'Photos' : 'Visit'} logged for ${n}`, () => { j.last = prev.last; j.kind = prev.kind; saveJobs(); render(); });
+      } else if (act === 'asksub') {
+        const msg = `Hi${j.sub ? ' ' + j.sub : ''}, it's ${OWNER}. Can you send me photos or a quick video of the current work at ${n}${j.addr ? ' (' + j.addr + ')' : ''}? Please include anything about to get covered up. Thanks!`;
+        location.href = smsHref(j.phone, msg);
+      } else if (act === 'navto') window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(j.addr), '_blank');
+      else if (act === 'editjob') openEdit(n);
+      return;
+    }
     if (el) {
       const act = el.dataset.act;
       if (act === 'collapse') { const p = el.dataset.p; collapsed.has(p) ? collapsed.delete(p) : collapsed.add(p); return render(); }

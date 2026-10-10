@@ -30,6 +30,7 @@
 <nav>
   <button data-view="today" class="active"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/><circle cx="12" cy="12" r="9.5"/></svg><span>Today</span></button>
   <button data-view="upcoming"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span>Upcoming</span></button>
+  <button data-view="visits"><i class="nbadge" id="vbadge" hidden></i><svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0114 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span>Visits</span></button>
   <button data-view="projects"><svg viewBox="0 0 24 24"><path d="M3.5 7.5a2 2 0 012-2h4l2 2.5h7a2 2 0 012 2v8a2 2 0 01-2 2h-13a2 2 0 01-2-2z"/></svg><span>Projects</span></button>
 </nav>
 <div class="sheet-bg" id="bg">
@@ -80,11 +81,40 @@
     </div>
     <label for="j-sub">Sub (optional)</label>
     <input id="j-sub" placeholder="e.g. Carlos plumbing" autocomplete="off">
+    <label for="j-addr">Job address (optional)</label>
+    <input id="j-addr" placeholder="e.g. 123 Main St, Palm Springs" autocomplete="off">
+    <label for="j-phone">Sub phone (optional)</label>
+    <input id="j-phone" type="tel" inputmode="tel" placeholder="e.g. 760 555 1234" autocomplete="off">
     <label for="j-upsell">Upsell potential in $ (optional)</label>
     <input id="j-upsell" inputmode="numeric" placeholder="e.g. 30000" autocomplete="off">
     <div class="actions">
       <button class="btn ghost" id="jCancel">Cancel</button>
       <button class="btn primary" id="jSave">Create job</button>
+    </div>
+  </div>
+</div>
+<div class="sheet-bg" id="editBg">
+  <div class="sheet" role="dialog">
+    <div class="grab"></div>
+    <h2 id="eTitle">Job</h2>
+    <label for="e-addr">Job address</label>
+    <input id="e-addr" placeholder="e.g. 123 Main St, Palm Springs" autocomplete="off">
+    <label for="e-sub">Sub</label>
+    <input id="e-sub" placeholder="e.g. Carlos plumbing" autocomplete="off">
+    <label for="e-phone">Sub phone</label>
+    <input id="e-phone" type="tel" inputmode="tel" placeholder="e.g. 760 555 1234" autocomplete="off">
+    <label for="e-upsell">Upsell potential in $</label>
+    <input id="e-upsell" inputmode="numeric" placeholder="e.g. 30000" autocomplete="off">
+    <label>Visit or photo check every</label>
+    <div class="chips" id="everyChips">
+      <button type="button" class="chip" data-e="2">2 days</button>
+      <button type="button" class="chip" data-e="3">3 days</button>
+      <button type="button" class="chip" data-e="5">5 days</button>
+      <button type="button" class="chip" data-e="7">7 days</button>
+    </div>
+    <div class="actions">
+      <button class="btn ghost" id="eCancel">Cancel</button>
+      <button class="btn primary" id="eSave">Save</button>
     </div>
   </div>
 </div>
