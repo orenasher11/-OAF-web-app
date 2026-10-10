@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '16';
+  const APP_VERSION = '17';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   const OWNER = 'Oren';
   const CATS = [

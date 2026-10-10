@@ -275,3 +275,9 @@ body.inchat main{padding:calc(76px + env(safe-area-inset-top)) 10px 90px}
 
 html.inchat{background:var(--chat-bg)}
 body.inchat{min-height:100vh;min-height:100dvh}
+
+#fixbar{position:fixed;left:10px;right:10px;bottom:10px;z-index:99;background:#7a1210;color:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 6px 20px rgba(0,0,0,.4);font-size:14px}
+#fixbar[hidden]{display:none}
+.fixbtns{display:flex;gap:8px;margin-top:10px}
+.fixbtns button{flex:1;border:0;border-radius:10px;padding:11px;font-weight:700;font-size:15px;background:#fff;color:#7a1210}
+.fixbtns button#fixReset{background:#ff6a1a;color:#fff}

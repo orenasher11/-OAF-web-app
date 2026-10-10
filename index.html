@@ -226,6 +226,29 @@
     </div>
   </div>
 </div>
+<div id="fixbar" hidden>
+  <div id="fixmsg">Something went wrong.</div>
+  <div class="fixbtns">
+    <button id="fixReload">Reload</button>
+    <button id="fixReset">Fix &amp; update</button>
+  </div>
+</div>
+<script>
+// Safety net: shows a repair bar if the app fails to start or throws an error. Never touches your saved tasks.
+(function () {
+  var bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
+  function show(t) { try { msg.textContent = t; bar.hidden = false; } catch (e) {} }
+  window.addEventListener('error', function (e) { show('Error: ' + (e.message || 'unknown') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
+  window.addEventListener('unhandledrejection', function (e) { var r = e.reason; show('Error: ' + ((r && r.message) || r || 'unknown')); });
+  document.getElementById('fixReload').onclick = function () { location.reload(); };
+  document.getElementById('fixReset').onclick = function () {
+    var done = function () { location.replace(location.pathname + '?r=' + Date.now()); };
+    var p = navigator.serviceWorker ? navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }) : Promise.resolve();
+    p.then(function () { return window.caches ? caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }) : 0; }).then(done, done);
+  };
+  setTimeout(function () { var h = document.getElementById('h1'); if (h && !h.textContent) show('The app did not start. Tap Fix & update (your tasks are safe).'); }, 3000);
+})();
+</script>
 <script src="assets/app.js"></script>
 </body>
 </html>

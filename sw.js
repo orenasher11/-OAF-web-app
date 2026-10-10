@@ -1,4 +1,4 @@
-const CACHE = 'oaf-tasks-v16';
+const CACHE = 'oaf-tasks-v17';
 const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'assets/base.css', 'assets/theme.css', 'assets/app.js'];
 
 self.addEventListener('install', e => {
