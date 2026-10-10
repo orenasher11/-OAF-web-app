@@ -10,7 +10,7 @@
   ];
   const catOf = id => CATS.find(c => c.id === id);
 
-  let tasks = [], view = 'today', filter = 'all', editingId = null, curJob = '';
+  let tasks = [], view = 'today', filter = 'all', editingId = null, curJob = '', jobTab = 'chat';
   let formCat = '', formStar = false, lastUndo = null, toastTimer = null;
   const collapsed = new Set();
   const $ = s => document.querySelector(s);
@@ -65,8 +65,8 @@
     if (mine.length > 8) L.push(`  ...and ${mine.length - 8} more`);
     if (!mine.length) L.push('  none');
     if (doneRecent.length) { L.push('', `Done this week (${doneRecent.length}):`); doneRecent.slice(0, 5).forEach(t => L.push('  ✓ ' + t.title)); }
-    const notes = (j.notes || []).slice(0, 3);
-    if (notes.length) { L.push('', 'Recent notes:'); notes.forEach(x => L.push(`  • ${fmtStamp(x.at)}: ${x.text}`)); }
+    const msgs = timeline(n).filter(x => x.kind !== 'sys').slice(-4).reverse();
+    if (msgs.length) { L.push('', 'Recent messages and notes:'); msgs.forEach(x => L.push(`  • ${fmtStamp(new Date(x.ts).toISOString())} ${x.kind === 'out' ? 'You: ' : x.kind === 'in' ? (x.who || 'Reply') + ': ' : ''}${x.text}`)); }
     const watch = [];
     if (late.length) watch.push('Overdue tasks');
     if (v.state === 'late') watch.push('Site visit or photo check is overdue');
@@ -113,6 +113,54 @@
   }
   function showText(title, text) {
     $('#sumTitle').textContent = title; $('#sumText').textContent = text; $('#sumBg').classList.add('open');
+  }
+  // ---- job chat (WhatsApp-style thread) ----
+  function groupMembers(n) {
+    const j = jobs[n] || {};
+    const all = [...getSubs(j), ...team].filter(x => hasPhone(x.phone));
+    return j.group ? all.filter(x => j.group.includes(cleanPhone(x.phone))) : getSubs(j).filter(x => hasPhone(x.phone));
+  }
+  function logMsg(n, kind, text, extra = {}) {
+    const j = jobs[n] = jobs[n] || {};
+    j.chat = [...(j.chat || []), { id: uid(), at: new Date().toISOString(), kind, text, ...extra }]; saveJobs();
+  }
+  function timeline(n) {
+    const j = jobs[n] || {}, items = [];
+    (j.notes || []).forEach(x => items.push({ id: x.id, ts: new Date(x.at).getTime(), kind: 'note', text: x.text }));
+    (j.chat || []).forEach(x => items.push({ ...x, ts: new Date(x.at).getTime() }));
+    tasks.filter(t => t.done && t.project === n && t.doneOn).forEach(t => items.push({ id: 'd' + t.id, ts: new Date(t.doneAt || t.doneOn + 'T12:00:00').getTime(), kind: 'sys', text: '✓ Done: ' + t.title }));
+    if (j.last) items.push({ id: 'v', ts: new Date(j.last + 'T12:00:00').getTime(), kind: 'sys', text: j.kind === 'photos' ? '📷 Photos received from sub' : '🚗 Site visit logged' });
+    return items.sort((a, b) => a.ts - b.ts);
+  }
+  function chatHTML(n) {
+    const items = timeline(n);
+    if (!items.length) return `<div class="empty"><div class="big">💬</div>No messages yet.<br>Messages you send to your team, replies you log, notes, and job updates will show up here.</div>`;
+    let last = '', out = '<div class="chat">';
+    items.forEach(x => {
+      const d = new Date(x.ts), key = iso(d);
+      if (key !== last) { out += `<div class="bday"><span>${fmtDate(key)}</span></div>`; last = key; }
+      const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      if (x.kind === 'sys') { out += `<div class="bsys">${esc(x.text)}</div>`; return; }
+      out += `<div class="bub ${x.kind}" data-act="delmsg" data-id="${x.id}" data-k="${x.kind}">
+        ${x.kind === 'in' ? `<div class="bwho">${esc(x.who || 'Reply')}</div>` : ''}
+        ${x.kind === 'out' && x.to && x.to.length ? `<div class="bto">To: ${esc(x.to.join(', '))}</div>` : ''}
+        ${x.kind === 'note' ? '<div class="bto">📝 Note</div>' : ''}
+        <div class="btext">${esc(x.text)}</div><div class="btime">${time}${x.kind === 'out' ? ' ✓' : ''}</div></div>`;
+    });
+    return out + '</div>';
+  }
+  function layoutComposer() {
+    const vv = window.visualViewport, kb = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+    $('#composer').style.bottom = (kb > 80 ? kb : document.querySelector('nav').offsetHeight) + 'px';
+  }
+  if (window.visualViewport) { visualViewport.addEventListener('resize', layoutComposer); visualViewport.addEventListener('scroll', layoutComposer); }
+  function sendChat() {
+    const text = $('#chatIn').value.trim(); if (!text) return;
+    const g = groupMembers(curJob);
+    logMsg(curJob, g.length ? 'out' : 'note', text, g.length ? { to: g.map(x => x.name) } : {});
+    $('#chatIn').value = ''; $('#chatIn').style.height = 'auto'; render();
+    if (g.length) location.href = `sms:${g.map(x => cleanPhone(x.phone)).join(',')}${/iPhone|iPad|Mac/.test(navigator.userAgent) ? '&' : '?'}body=${encodeURIComponent(text)}`;
+    else toast('Saved as a note. Tap "To:" to pick who to text.');
   }
   const smsHref = (phone, body) => `sms:${phone || ''}${/iPhone|iPad|Mac/.test(navigator.userAgent) ? '&' : '?'}body=${encodeURIComponent(body)}`;
   function fmtTime(t) {
@@ -245,20 +293,30 @@
     } else if (view === 'job') {
       const n = curJob, j = jobs[n] || {};
       $('#h1').textContent = n;
-      $('#sub').textContent = j.addr || 'No address yet. Tap Edit job to add it.';
+      $('#sub').textContent = j.addr || 'No address yet. Open Details to add it.';
       const mine = open.filter(t => t.project === n);
       const doneT = tasks.filter(t => t.done && t.project === n);
-      if (getSubs(j).length) html += `<div class="subchips jobsubs">${subChips(j, true)}</div>`;
-      html += `<div class="jobactions">
-        <button class="jbtn primary" data-act="addto" data-p="${esc(n)}">＋ Add task</button>
-        <button class="jbtn" data-act="msgteam">💬 Message team</button>
-        <button class="jbtn" data-act="summary">📝 Summary</button>
-        <button class="jbtn" data-act="editjobd">✎ Edit job</button>
-        <button class="jbtn" data-act="upsell" data-p="${esc(n)}">${j.upsell ? money(j.upsell) + ' upsell' : '+ Upsell $'}</button>
-      </div>`;
-      html += mine.length ? mine.map(taskHTML).join('') : `<div class="empty"><div class="big">✓</div>No open tasks on this job.</div>`;
-      if (doneT.length) html += `<div class="section-title">Done (${doneT.length})</div>` + doneT.map(taskHTML).join('');
-      html += notesHTML(n);
+      html += `<div class="jtabs">${[['chat', '💬 Chat'], ['tasks', '✅ Tasks' + (mine.length ? ' (' + mine.length + ')' : '')], ['info', 'ℹ️ Details']]
+        .map(([k, l]) => `<button class="jtab ${jobTab === k ? 'on' : ''}" data-act="jtab" data-tab="${k}">${l}</button>`).join('')}</div>`;
+      if (jobTab === 'chat') html += chatHTML(n);
+      else if (jobTab === 'tasks') {
+        html += `<div class="jobactions"><button class="jbtn primary" data-act="addto" data-p="${esc(n)}">＋ Add task</button></div>`;
+        html += mine.length ? mine.map(taskHTML).join('') : `<div class="empty"><div class="big">✓</div>No open tasks on this job.</div>`;
+        if (doneT.length) html += `<div class="section-title">Done (${doneT.length})</div>` + doneT.map(taskHTML).join('');
+      } else {
+        html += `<div class="section-title">Subs on this job</div>` + (getSubs(j).length ? `<div class="subchips jobsubs">${subChips(j, true)}</div>` : `<div class="hint">No subs yet. Tap Edit job to add them.</div>`);
+        html += `<div class="section-title">Job</div><div class="infocard">
+          <div><span>Address</span><b>${esc(j.addr || 'none')}</b></div>
+          <div><span>Upsell potential</span><b>${j.upsell ? money(j.upsell) : 'not set'}</b></div>
+          <div><span>Last site check</span><b>${j.last ? agoText(j.last) + ' · ' + (j.kind === 'photos' ? 'photos' : 'on site') : 'none logged'}</b></div>
+          <div><span>Check every</span><b>${j.every || 5} days</b></div></div>
+          <div class="jobactions">
+            <button class="jbtn primary" data-act="editjobd">✎ Edit job</button>
+            <button class="jbtn" data-act="summary">📝 Summary</button>
+            <button class="jbtn" data-act="msgteam">💬 Group &amp; quick messages</button>
+            ${j.addr ? `<button class="jbtn" data-act="navjob">🧭 Go to job</button>` : ''}
+          </div>`;
+      }
     } else {
       $('#h1').textContent = 'Projects';
       const names = activeProjects();
@@ -303,6 +361,15 @@
     $('#pot').innerHTML = inPlay ? `Upsell potential in play <b>${money(inPlay)}</b>` : 'Add upsell potential to each job';
     $('#main').innerHTML = html;
     document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === (view === 'job' ? 'projects' : view)));
+    const inChat = view === 'job' && jobTab === 'chat';
+    $('#composer').hidden = !inChat; $('#fab').hidden = inChat;
+    document.body.classList.toggle('inchat', inChat);
+    if (inChat) {
+      const g = groupMembers(curJob);
+      $('#toBar').innerHTML = g.length ? `To: <b>${esc(g.map(x => x.name).join(', '))}</b> · change` : 'To: nobody selected · tap to choose';
+      layoutComposer();
+      requestAnimationFrame(() => window.scrollTo(0, document.body.scrollHeight));
+    }
     $('#projList').innerHTML = [...new Set(tasks.map(t => t.project).filter(Boolean))].map(p => `<option value="${esc(p)}">`).join('');
   }
 
@@ -395,12 +462,13 @@
   function openMsg(n) {
     msgJob = n; const j = jobs[n] || {};
     msgList = [
-      ...getSubs(j).map((x, i) => ({ key: 's' + i, kind: 'sub', name: x.name, role: x.trade, phone: hasPhone(x.phone) ? x.phone : '', checked: hasPhone(x.phone) })),
-      ...team.map((x, i) => ({ key: 't' + i, kind: 'team', name: x.name, role: x.role, phone: hasPhone(x.phone) ? x.phone : '', checked: false })),
+      ...getSubs(j).map((x, i) => ({ key: 's' + i, kind: 'sub', name: x.name, role: x.trade, phone: hasPhone(x.phone) ? x.phone : '', checked: j.group ? j.group.includes(cleanPhone(x.phone)) : hasPhone(x.phone) })),
+      ...team.map((x, i) => ({ key: 't' + i, kind: 'team', name: x.name, role: x.role, phone: hasPhone(x.phone) ? x.phone : '', checked: !!(j.group && j.group.includes(cleanPhone(x.phone))) })),
     ];
     $('#msgTitle').textContent = 'Message team · ' + n;
     $('#tplChips').innerHTML = TEMPLATES.map((t, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-t="${i}">${t[0]}</button>`).join('');
     $('#m-text').value = TEMPLATES[0][1](n, j.addr ? ' (' + j.addr + ')' : '');
+    $('#mUse').hidden = !(view === 'job' && jobTab === 'chat');
     paintRecips(); $('#msgBg').classList.add('open');
   }
   $('#tplChips').onclick = e => {
@@ -409,9 +477,15 @@
     const j = jobs[msgJob] || {}; $('#m-text').value = TEMPLATES[+c.dataset.t][1](msgJob, j.addr ? ' (' + j.addr + ')' : '');
     $('#m-text').focus();
   };
-  $('#rcptList').onchange = e => { const r = msgList.find(x => x.key === e.target.dataset.k); if (r) r.checked = e.target.checked; };
-  $('#mAll').onclick = () => { msgList.forEach(r => { if (r.phone) r.checked = true; }); paintRecips(); };
-  $('#mNone').onclick = () => { msgList.forEach(r => r.checked = false); paintRecips(); };
+  function saveGroup() {
+    const j = jobs[msgJob] = jobs[msgJob] || {};
+    j.group = msgList.filter(r => r.checked && r.phone).map(r => cleanPhone(r.phone)); saveJobs();
+    if (view === 'job') render();
+  }
+  $('#rcptList').onchange = e => { const r = msgList.find(x => x.key === e.target.dataset.k); if (r) { r.checked = e.target.checked; saveGroup(); } };
+  $('#mAll').onclick = () => { msgList.forEach(r => { if (r.phone) r.checked = true; }); paintRecips(); saveGroup(); };
+  $('#mNone').onclick = () => { msgList.forEach(r => r.checked = false); paintRecips(); saveGroup(); };
+  $('#mUse').onclick = () => { $('#chatIn').value = $('#m-text').value; $('#msgBg').classList.remove('open'); autoGrow(); $('#chatIn').focus(); };
   $('#mTeam').onclick = () => { teamFromMsg = true; $('#msgBg').classList.remove('open'); openTeam(); };
   $('#mCancel').onclick = () => $('#msgBg').classList.remove('open');
   $('#msgBg').onclick = e => { if (e.target.id === 'msgBg') $('#msgBg').classList.remove('open'); };
@@ -419,7 +493,37 @@
   $('#mSend').onclick = () => {
     const nums = msgList.filter(r => r.checked && r.phone).map(r => cleanPhone(r.phone));
     if (!nums.length) { toast('Pick at least one person'); return; }
+    logMsg(msgJob, 'out', $('#m-text').value, { to: msgList.filter(r => r.checked && r.phone).map(r => r.name) }); if (view === 'job') render();
     location.href = `sms:${nums.join(',')}${/iPhone|iPad|Mac/.test(navigator.userAgent) ? '&' : '?'}body=${encodeURIComponent($('#m-text').value)}`;
+  };
+
+  // ---- composer ----
+  function autoGrow() { const t = $('#chatIn'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 120) + 'px'; }
+  $('#chatIn').addEventListener('input', autoGrow);
+  $('#chatIn').addEventListener('focus', () => setTimeout(() => { layoutComposer(); window.scrollTo(0, document.body.scrollHeight); }, 300));
+  $('#chatIn').addEventListener('blur', () => setTimeout(layoutComposer, 100));
+  $('#chatSend').onclick = sendChat;
+  $('#toBar').onclick = () => openMsg(curJob);
+  $('#chatPlus').onclick = () => $('#plusBg').classList.add('open');
+  $('#plusBg').onclick = e => {
+    const b = e.target.closest('[data-p]'), closeP = () => $('#plusBg').classList.remove('open');
+    if (e.target.id === 'plusBg' || (b && b.dataset.p === 'cancel')) return closeP();
+    if (!b) return; closeP();
+    if (b.dataset.p === 'quick') openMsg(curJob);
+    else if (b.dataset.p === 'reply') {
+      const people = [...getSubs(jobs[curJob]), ...team];
+      $('#inWho').innerHTML = people.map(x => `<option>${esc(x.name)}</option>`).join('') + '<option>Customer</option><option>Other</option>';
+      $('#inText').value = ''; $('#inBg').classList.add('open'); setTimeout(() => $('#inText').focus(), 60);
+    } else if (b.dataset.p === 'note') {
+      const text = $('#chatIn').value.trim(); if (!text) { toast('Type the note first, then choose this'); return; }
+      logMsg(curJob, 'note', text); $('#chatIn').value = ''; autoGrow(); render();
+    } else if (b.dataset.p === 'team') { teamFromMsg = false; openTeam(); }
+  };
+  $('#inCancel').onclick = () => $('#inBg').classList.remove('open');
+  $('#inBg').onclick = e => { if (e.target.id === 'inBg') $('#inBg').classList.remove('open'); };
+  $('#inSave').onclick = () => {
+    const text = $('#inText').value.trim(); if (!text) { $('#inText').focus(); return; }
+    logMsg(curJob, 'in', text, { who: $('#inWho').value }); $('#inBg').classList.remove('open'); render();
   };
 
   // ---- new job sold: creates the whole first-48-hours playbook ----
@@ -555,7 +659,15 @@
       const act = el.dataset.act;
       if (act === 'collapse') { const p = el.dataset.p; collapsed.has(p) ? collapsed.delete(p) : collapsed.add(p); return render(); }
       if (act === 'addto') return openSheet(null, el.dataset.p);
-      if (act === 'openjob') { curJob = el.dataset.p; view = 'job'; render(); window.scrollTo(0, 0); return; }
+      if (act === 'openjob') { curJob = el.dataset.p; jobTab = 'chat'; view = 'job'; render(); return; }
+      if (act === 'jtab') { jobTab = el.dataset.tab; render(); if (jobTab !== 'chat') window.scrollTo(0, 0); return; }
+      if (act === 'navjob') return void window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent((jobs[curJob] || {}).addr || ''), '_blank');
+      if (act === 'delmsg') {
+        if (!confirm('Delete this message?')) return;
+        const j = jobs[curJob] || {};
+        if (el.dataset.k === 'note') j.notes = (j.notes || []).filter(x => x.id !== el.dataset.id); else j.chat = (j.chat || []).filter(x => x.id !== el.dataset.id);
+        saveJobs(); return render();
+      }
       if (act === 'editjobd') return openEdit(curJob);
       if (act === 'msgteam') return openMsg(curJob);
       if (act === 'summary') return showText('Summary', jobSummary(curJob));
@@ -580,7 +692,7 @@
       }
       const t = tasks.find(x => x.id === el.closest('.task').dataset.id); if (!t) return;
       if (act === 'toggle') {
-        t.done = !t.done; t.doneOn = t.done ? todayISO() : null; save(); render();
+        t.done = !t.done; t.doneOn = t.done ? todayISO() : null; t.doneAt = t.done ? new Date().toISOString() : null; save(); render();
         if (t.done) toast('Marked done', () => { t.done = false; t.doneOn = null; save(); render(); });
       } else if (act === 'star') { t.star = !t.star; save(); render(); }
       else if (act === 'snooze') {

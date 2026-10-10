@@ -166,3 +166,34 @@ input[type=date],input[type=time]{min-width:0;-webkit-appearance:none;appearance
 
 .req{font-style:normal;font-size:11px;color:var(--accent-text,var(--accent));text-transform:none;letter-spacing:0;margin-left:4px}
 input.err{border-color:var(--danger);box-shadow:0 0 0 2px color-mix(in srgb,var(--danger) 25%,transparent)}
+
+/* ---- job tabs + chat ---- */
+.jtabs{display:flex;gap:6px;margin:14px 0 4px;background:var(--surface);border:var(--border) solid var(--line);border-radius:var(--radius-sm);padding:4px}
+.jtab{flex:1;border:0;background:none;border-radius:calc(var(--radius-sm) - 3px);padding:9px 4px;font-size:14px;font-weight:700;color:var(--muted)}
+.jtab.on{background:var(--accent);color:var(--accent-ink)}
+.infocard{background:var(--surface);border:var(--border) solid var(--line);border-radius:var(--radius);overflow:hidden}
+.infocard div{display:flex;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line);font-size:14.5px}
+.infocard div:last-child{border-bottom:0}.infocard span{color:var(--muted)}.infocard b{text-align:right;word-break:break-word}
+body.inchat{background:#e6ebf3}
+body.inchat main{padding-bottom:150px}
+.chat{display:flex;flex-direction:column;gap:4px;padding:6px 0}
+.bday{text-align:center;margin:12px 0 6px}
+.bday span{background:rgba(255,255,255,.85);color:var(--muted);font-size:12px;font-weight:700;padding:4px 12px;border-radius:999px;box-shadow:0 1px 1px rgba(0,0,0,.08)}
+.bsys{align-self:center;max-width:90%;background:rgba(255,255,255,.7);color:var(--muted);font-size:12.5px;padding:4px 12px;border-radius:999px;margin:3px 0;text-align:center}
+.bub{max-width:82%;padding:7px 10px 5px;border-radius:12px;box-shadow:0 1px 1px rgba(0,0,0,.12);font-size:15.5px;position:relative;word-break:break-word}
+.bub.out{align-self:flex-end;background:#d9fdd3;border-top-right-radius:3px}
+.bub.in{align-self:flex-start;background:#fff;border-top-left-radius:3px}
+.bub.note{align-self:flex-end;background:#fff4c2;border-top-right-radius:3px}
+.bwho{font-size:12.5px;font-weight:800;color:#0b7a6b;margin-bottom:1px}
+.bto{font-size:11.5px;color:#5b6b78;margin-bottom:2px;font-weight:600}
+.btext{white-space:pre-wrap}
+.btime{font-size:11px;color:#6b7a86;text-align:right;margin-top:2px}
+.composer{position:fixed;left:0;right:0;bottom:70px;z-index:8;background:#f0f2f5;border-top:1px solid var(--line);padding:6px 10px 8px}
+.tobar{font-size:12.5px;color:var(--muted);padding:2px 6px 6px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tobar b{color:var(--text)}
+.cbar{display:flex;gap:8px;align-items:flex-end}
+.cbar textarea{flex:1;min-height:42px;max-height:120px;height:42px;border-radius:21px;background:#fff;border:1px solid var(--line);padding:10px 14px;line-height:1.3;resize:none;overflow-y:auto}
+.cplus,.csend{flex:none;width:42px;height:42px;border-radius:50%;border:0;font-size:22px;line-height:1}
+.cplus{background:#fff;color:var(--muted);border:1px solid var(--line)}
+.csend{background:var(--accent);color:var(--accent-ink);font-size:18px}
+select{width:100%;font:inherit;font-size:16px;color:var(--text);background:var(--bg);border:var(--border) solid var(--line);border-radius:var(--radius-sm);padding:12px}
