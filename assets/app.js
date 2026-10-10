@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '15';
+  const APP_VERSION = '16';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   const OWNER = 'Oren';
   const CATS = [
@@ -482,6 +482,7 @@
     const inChat = view === 'job' && jobTab === 'chat';
     $('#composer').hidden = !inChat; $('#chatHead').hidden = !inChat; $('#fab').hidden = inChat;
     document.body.classList.toggle('inchat', inChat);
+    document.documentElement.classList.toggle('inchat', inChat);
     if (!inChat) document.querySelector('main').style.paddingBottom = '';
     if (inChat) { paintChatHead(); updateMain(); layoutComposer(); requestAnimationFrame(() => { layoutComposer(); window.scrollTo(0, document.body.scrollHeight); }); }
     hydrateMedia();
