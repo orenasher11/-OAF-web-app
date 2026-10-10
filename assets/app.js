@@ -430,7 +430,7 @@
   function openJob() {
     ['#j-name', '#j-sub', '#j-phone', '#j-addr', '#j-upsell'].forEach(i => $(i).value = '');
     setKick(addDays(1)); $('#j-time').value = '08:00';
-    $('#jobBg').classList.add('open'); setTimeout(() => $('#j-name').focus(), 60);
+    $('#jobBg').classList.add('open'); setTimeout(() => $('#j-addr').focus(), 60);
   }
   const closeJob = () => $('#jobBg').classList.remove('open');
   function saveJob() {

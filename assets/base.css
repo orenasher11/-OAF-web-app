@@ -160,3 +160,6 @@ nav button{position:relative}
 .rtools{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
 .rtools button{border:var(--border) solid var(--line);background:var(--bg);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600}
 .actions.wrap{flex-wrap:wrap}.actions.wrap .btn.primary{flex:1 0 100%;order:-1}
+
+.row2>*{min-width:0;width:100%}
+input[type=date],input[type=time]{min-width:0;-webkit-appearance:none;appearance:none;text-align:left;min-height:48px}
