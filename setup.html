@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f2747">
+<title>Cloud setup</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:#f2f5fa;color:#0e1a2b;font:16px/1.45 -apple-system,system-ui,"Segoe UI",Roboto,sans-serif;padding-bottom:60px}
+  header{background:linear-gradient(160deg,#0f2747,#17406f);color:#fff;padding:18px 16px 24px;padding-top:max(18px,env(safe-area-inset-top));border-radius:0 0 24px 24px}
+  header a{color:#b9c9e0;text-decoration:none;font-size:14px}
+  h1{margin:8px 0 4px;font-size:26px}header p{margin:0;color:#b9c9e0;font-size:14.5px}
+  main{padding:0 16px}
+  .step{background:#fff;border-radius:18px;padding:16px;margin-top:14px;box-shadow:0 1px 4px rgba(15,39,71,.08)}
+  .step h2{margin:0 0 8px;font-size:18px;display:flex;gap:10px;align-items:center}
+  .n{flex:none;width:28px;height:28px;border-radius:50%;background:#ff6a1a;color:#fff;display:grid;place-items:center;font-size:15px;font-weight:800}
+  ol,ul{margin:6px 0 6px 20px;padding:0}li{margin:5px 0}
+  code{background:#eef2f8;border-radius:6px;padding:1px 6px;font-size:14px;word-break:break-word}
+  pre{background:#0f2747;color:#e8eefb;border-radius:12px;padding:12px;font-size:13px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:8px 0}
+  input{width:100%;font:inherit;font-size:16px;border:1px solid #d7deea;background:#f2f5fa;border-radius:10px;padding:12px;margin:6px 0}
+  button,.btn{display:block;width:100%;border:0;border-radius:12px;background:#ff6a1a;color:#fff;font-weight:800;font-size:16px;padding:14px;margin-top:8px;text-align:center;text-decoration:none}
+  button.ghost{background:#eef2f8;color:#0e1a2b}
+  .warn{background:#fff4c2;border-radius:12px;padding:10px 12px;margin-top:10px;font-size:14px}
+  .bad{background:#fdeceb;color:#a3201a;border-radius:12px;padding:10px 12px;margin-top:10px;font-size:14px}
+  .ok{background:#e8f6ee;color:#14532d;border-radius:12px;padding:10px 12px;margin-top:10px;font-size:14px}
+  small{color:#66748a}
+</style>
+</head>
+<body>
+<header>
+  <a href="./">‹ Back to the app</a>
+  <h1>Cloud setup</h1>
+  <p>About 10 minutes. It's free, and you can do it all from your phone.</p>
+</header>
+<main>
+  <div id="status"></div>
+
+  <div class="step">
+    <h2><span class="n">1</span>Create your free cloud project</h2>
+    <ol>
+      <li>Go to <b>supabase.com</b> and tap <b>Start your project</b>.</li>
+      <li>Sign up with your email or GitHub.</li>
+      <li>Tap <b>New project</b>. Name: <code>oaf</code>. Pick a strong <b>database password</b> and save it in your notes.</li>
+      <li>Region: <b>West US (North California)</b>. Plan: <b>Free</b>. Tap <b>Create new project</b> and wait about 2 minutes.</li>
+    </ol>
+    <div class="warn">Tip: the Supabase site works best in your phone's browser with <b>Request Desktop Website</b> turned on (tap <b>aA</b> in Safari's address bar).</div>
+  </div>
+
+  <div class="step">
+    <h2><span class="n">2</span>Run the setup code</h2>
+    <p>Type <b>your email</b> below. This is the email you'll sign in to the app with. Then copy the code.</p>
+    <input id="email" type="email" inputmode="email" placeholder="you@example.com" autocomplete="email">
+    <button id="copy">Copy the setup code</button>
+    <ol>
+      <li>In Supabase, open <b>SQL Editor</b> in the left menu, then <b>New query</b>.</li>
+      <li>Paste the code (touch and hold, then Paste), then tap <b>Run</b>.</li>
+      <li>It should say <b>Success</b>. If you see a red error, send me a screenshot.</li>
+    </ol>
+    <details><summary><small>Show the code</small></summary><pre id="sql">Loading…</pre></details>
+  </div>
+
+  <div class="step">
+    <h2><span class="n">3</span>Make sign-in codes work</h2>
+    <p>In Supabase, open <b>Authentication</b>, then <b>Emails</b> (or <b>Email Templates</b>). Edit <b>both</b> the <b>Confirm signup</b> and the <b>Magic Link</b> templates. Replace everything in the message body with:</p>
+    <pre id="tpl">&lt;h2&gt;Your sign-in code&lt;/h2&gt;
+&lt;p&gt;Type this code in the app: &lt;b&gt;{{ .Token }}&lt;/b&gt;&lt;/p&gt;</pre>
+    <button class="ghost" id="copytpl">Copy this message</button>
+    <p>Tap <b>Save</b> on each template.</p>
+    <div class="warn">Supabase's built-in email sender only allows a few emails per hour. That's fine for you and your partners. If codes stop arriving, tell me and I'll connect a free email service.</div>
+  </div>
+
+  <div class="step">
+    <h2><span class="n">4</span>Send me two values</h2>
+    <p>In Supabase, open <b>Project Settings → API</b> (or tap the <b>Connect</b> button at the top). Copy these two and send them to me in our chat:</p>
+    <ul>
+      <li><b>Project URL</b> (looks like <code>https://abcd.supabase.co</code>)</li>
+      <li><b>anon public key</b> (also called <i>publishable</i> key, a long text starting with <code>eyJ</code> or <code>sb_publishable</code>)</li>
+    </ul>
+    <div class="bad"><b>Never send</b> the <code>service_role</code> key, a <code>secret</code> key, or your database password. I only need the two public values above.</div>
+  </div>
+
+  <div class="step">
+    <h2><span class="n">5</span>Invite your partners</h2>
+    <p>After I connect the app, open the app, go to <b>Projects → ☁️ Cloud</b>, sign in with your email, and use <b>Invite someone</b> to add each partner's email. Then they sign in the same way.</p>
+  </div>
+</main>
+<script src="assets/config.js"></script>
+<script>
+  var st = document.getElementById('status'), cfg = window.OAF_CFG || {};
+  st.innerHTML = cfg.url && cfg.anon ? '<div class="ok">✓ The app is already connected to a cloud project. Open the app and tap <b>Projects → ☁️ Cloud</b> to sign in.</div>' : '';
+  var sqlText = '';
+  fetch('supabase/schema.sql', { cache: 'no-cache' }).then(function (r) { return r.text(); }).then(function (t) { sqlText = t; document.getElementById('sql').textContent = t; }).catch(function () { document.getElementById('sql').textContent = 'Could not load the code. Check your connection and reload.'; });
+  function copy(text, btn, done) {
+    var ok = function () { var o = btn.textContent; btn.textContent = done; setTimeout(function () { btn.textContent = o; }, 1800); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok, function () { alert('Could not copy. Tap "Show the code", select it, and copy by hand.'); });
+    else alert('Could not copy automatically. Tap "Show the code", select it, and copy by hand.');
+  }
+  document.getElementById('copy').onclick = function () {
+    var em = document.getElementById('email').value.trim().toLowerCase();
+    if (!em || em.indexOf('@') < 1) { alert('Type your email first.'); document.getElementById('email').focus(); return; }
+    if (!sqlText) { alert('The code is still loading. Try again in a moment.'); return; }
+    copy(sqlText.replace("lower('YOUR_EMAIL_HERE')", "lower('" + em.replace(/'/g, '') + "')"), this, '✓ Copied. Now paste it in Supabase');
+  };
+  document.getElementById('copytpl').onclick = function () { copy('<h2>Your sign-in code</h2>\n<p>Type this code in the app: <b>{{ .Token }}</b></p>', this, '✓ Copied'); };
+</script>
+</body>
+</html>

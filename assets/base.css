@@ -330,3 +330,8 @@ body.inchat main{padding:calc(76px + env(safe-area-inset-top)) 10px 90px}
 .welcome{margin-top:18px;background:#fff;border-radius:18px;padding:22px 18px;text-align:center;box-shadow:0 1px 4px rgba(15,39,71,.1)}
 .welcome .wbig{font-size:44px}.welcome h3{margin:6px 0;font-size:22px;font-family:var(--font-head)}.welcome p{color:var(--muted);font-size:14.5px;margin:0 0 14px}
 .welcome .wide{margin-top:8px}
+
+.cerr{background:#fdeceb;color:#a3201a;border-radius:10px;padding:10px 12px;margin:8px 0;font-size:14px}
+.cok{background:#e8f6ee;border-radius:12px;padding:12px 14px;font-size:16px;color:#14532d}
+.cstat{font-size:13px;color:var(--muted);margin:8px 2px}
+.cx{border:0;background:none;font-size:24px;color:var(--danger);padding:0 6px}

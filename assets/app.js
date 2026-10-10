@@ -1,7 +1,8 @@
 (() => {
-  const APP_VERSION = '20';
+  const APP_VERSION = '21';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
-  const OWNER = 'Oren';
+  let OWNER = '';
+  try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
   const CATS = [
     { id: 'call', label: 'Call', icon: '📞' },
     { id: 'visit', label: 'Site visit', icon: '🚗' },
@@ -21,11 +22,13 @@
   const $ = s => document.querySelector(s) || NOOP;   // a missing element can never stop the app from starting
 
   try { tasks = JSON.parse(localStorage.getItem(KEY)) || []; } catch { tasks = []; }
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(tasks)); } catch {} };
+  if (!OWNER && tasks.length) OWNER = 'Oren';   // existing installs keep the original name
+  const changed = () => { try { window.OAF && window.OAF.onChange && window.OAF.onChange(); } catch {} };
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(tasks)); } catch {} changed(); };
   const JOBS_KEY = 'oaf-jobs-v1';        // per-project info: upsell potential, sub
   let jobs = {};
   try { jobs = JSON.parse(localStorage.getItem(JOBS_KEY)) || {}; } catch { jobs = {}; }
-  const saveJobs = () => { try { localStorage.setItem(JOBS_KEY, JSON.stringify(jobs)); } catch {} };
+  const saveJobs = () => { try { localStorage.setItem(JOBS_KEY, JSON.stringify(jobs)); } catch {} changed(); };
   const money = n => n >= 1000 ? '$' + (n / 1000).toFixed(n % 1000 ? 1 : 0).replace(/\.0$/, '') + 'k' : '$' + n;
   // a job can have several subs; older jobs only stored one (sub + phone)
   const getSubs = j => (j && j.subs) ? j.subs : (j && j.sub ? [{ name: j.sub, phone: j.phone || '' }] : []);
@@ -128,12 +131,12 @@
   }
   function logMsg(n, kind, text, extra = {}) {
     const j = jobs[n] = jobs[n] || {};
-    j.chat = [...(j.chat || []), { id: uid(), at: new Date().toISOString(), kind, text, ...extra }]; saveJobs();
+    j.chat = [...(j.chat || []), { id: uid(), at: new Date().toISOString(), kind, text, uid: window.OAF_ME || undefined, by: OWNER || undefined, ...extra }]; saveJobs();
   }
   function timeline(n) {
     const j = jobs[n] || {}, items = [];
     (j.notes || []).forEach(x => items.push({ id: x.id, ts: new Date(x.at).getTime(), kind: 'note', text: x.text, star: x.star, heart: x.heart }));
-    (j.chat || []).forEach(x => items.push({ ...x, ts: new Date(x.at).getTime() }));
+    (j.chat || []).forEach(x => { const other = x.kind === 'out' && x.uid && window.OAF_ME && x.uid !== window.OAF_ME; items.push({ ...x, ts: new Date(x.at).getTime(), ...(other ? { kind: 'in', who: x.by || 'Teammate' } : {}) }); });
     tasks.filter(t => t.done && t.project === n && t.doneOn).forEach(t => items.push({ id: 'd' + t.id, ts: new Date(t.doneAt || t.doneOn + 'T12:00:00').getTime(), kind: 'sys', text: '✓ Done: ' + t.title }));
     if (j.last) items.push({ id: 'v', ts: new Date(j.last + 'T12:00:00').getTime(), kind: 'sys', text: j.kind === 'photos' ? '📷 Photos received from sub' : '🚗 Site visit logged' });
     return items.sort((a, b) => a.ts - b.ts);
@@ -144,8 +147,15 @@
   const idb = (mode, fn) => mdb().then(d => new Promise((res, rej) => { const t = d.transaction('files', mode), r = fn(t.objectStore('files')); t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); }));
   const putFile = rec => idb('readwrite', st => st.put(rec));
   const getFile = id => idb('readonly', st => st.get(id));
-  const delFile = id => { delete memBlobs[id]; if (urlCache[id]) { URL.revokeObjectURL(urlCache[id]); delete urlCache[id]; } return idb('readwrite', st => st.delete(id)).catch(() => {}); };
-  async function blobOf(id) { if (memBlobs[id]) return memBlobs[id]; const r = await getFile(id).catch(() => null); return r ? r.blob : null; }
+  const delFile = id => { window.OAFsync && window.OAFsync.removeMedia && window.OAFsync.removeMedia(id); delete memBlobs[id]; if (urlCache[id]) { URL.revokeObjectURL(urlCache[id]); delete urlCache[id]; } return idb('readwrite', st => st.delete(id)).catch(() => {}); };
+  async function blobOf(id, localOnly) {
+    let b = memBlobs[id] || ((await getFile(id).catch(() => null)) || {}).blob;
+    if (!b && !localOnly && window.OAFsync && window.OAFsync.fetchMedia) {
+      b = await window.OAFsync.fetchMedia(id).catch(() => null);
+      if (b) { memBlobs[id] = b; putFile({ id, job: '', name: '', mime: b.type, size: b.size, blob: b }).catch(() => {}); }
+    }
+    return b || null;
+  }
   async function urlOf(id) { if (urlCache[id]) return urlCache[id]; const b = await blobOf(id); return b ? (urlCache[id] = URL.createObjectURL(b)) : ''; }
   const kindOf = f => /^image\//.test(f.type) ? 'image' : /^video\//.test(f.type) ? 'video' : 'file';
   const fmtSize = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
@@ -358,7 +368,7 @@
         ${srow('✅', 'To-do &amp; checklists', openN ? openN + ' open' : '✓', 'jtab', 'data-tab="tasks"')}
         ${srow('📝', 'Job summary', '', 'summary')}</div>
       <div class="ssec">${mem.length + 1} members</div><div class="scard">
-        <div class="mrow me">${`<span class="mav" style="background:#0f2747">${esc(OWNER[0])}</span>`}<span class="mbody"><b>${esc(OWNER)}</b><small>You</small></span></div>
+        <div class="mrow me">${`<span class="mav" style="background:#0f2747">${esc((OWNER || 'Y')[0])}</span>`}<span class="mbody"><b>${esc(OWNER || 'You')}</b><small>You</small></span></div>
         ${mem.map((x, i) => `<div class="mrow" data-act="member" data-i="${i}">${avatar(x)}<span class="mbody"><b>${esc(x.name)}</b><small>${esc(x.role || '')}${x.phone ? ' · ' + esc(x.phone) : ' · no phone'}</small></span>${hasPhone(x.phone) ? `<a class="mcall" href="tel:${esc(cleanPhone(x.phone))}" aria-label="Call">📞</a>` : ''}</div>`).join('')}
         <button class="srow addm" data-act="addmember"><span class="sico">＋</span><span class="slbl">Add member</span></button></div>
       <div class="ssec">Job settings</div><div class="scard">
@@ -443,7 +453,7 @@
 
     if (view === 'today') {
       const h = new Date().getHours();
-      $('#h1').textContent = `${h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'}, ${OWNER}`;
+      $('#h1').textContent = `${h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'}${OWNER ? ', ' + OWNER : ''}`;
       const overdue = open.filter(t => t.due && t.due < t0);
       const today = open.filter(t => t.due === t0);
       const doneToday = tasks.filter(t => t.done && t.doneOn === t0);
@@ -563,6 +573,7 @@
         <button id="importBtn">⬆ Restore</button>
         <button id="teamBtn">👥 My team</button>
         <button id="demoBtn">${Object.values(jobs).some(j => j && j.demo) ? '🧹 Remove sample jobs' : '✨ Add sample jobs'}</button>
+        <button id="cloudBtn">☁️ Cloud · ${window.OAFsync ? window.OAFsync.label() : '…'}</button>
         <button id="fbBtn">💬 Send feedback</button>
         <button id="updateBtn">🔄 Update app</button>
         <button id="clearDone">🧹 Clear completed</button>
@@ -642,7 +653,7 @@
   const TEAM_KEY = 'oaf-team-v1';
   let team = [];
   try { team = JSON.parse(localStorage.getItem(TEAM_KEY)) || []; } catch { team = []; }
-  const saveTeam = () => { try { localStorage.setItem(TEAM_KEY, JSON.stringify(team)); } catch {} };
+  const saveTeam = () => { try { localStorage.setItem(TEAM_KEY, JSON.stringify(team)); } catch {} changed(); };
   const cleanPhone = p => String(p || '').replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '');
   const hasPhone = p => cleanPhone(p).replace(/\D/g, '').length >= 10;
   let teamFromMsg = false, msgJob = '', msgList = [];
@@ -665,12 +676,12 @@
   $('#tCancel').onclick = closeTeam;
   $('#teamBg').onclick = e => { if (e.target.id === 'teamBg') closeTeam(); };
   $('#tSave').onclick = () => {
-    team = [...document.querySelectorAll('#teamRows .subrow')].map(r => ({ id: uid(), name: r.querySelector('.s-name').value.trim(), role: r.querySelector('.s-trade').value.trim(), phone: r.querySelector('.s-phone').value.trim() })).filter(x => x.name);
+    team = [...document.querySelectorAll('#teamRows .subrow')].map(r => ({ id: '', name: r.querySelector('.s-name').value.trim(), role: r.querySelector('.s-trade').value.trim(), phone: r.querySelector('.s-phone').value.trim() })).filter(x => x.name).map(x => ({ ...x, id: ((team.find(o => o.name === x.name && o.phone === x.phone) || {}).id) || uid() }));
     saveTeam(); closeTeam(); toast(`${team.length} ${team.length === 1 ? 'person' : 'people'} saved`);
   };
 
   const TEMPLATES = [
-    ['📷 Photos', (n, a) => `Hi team, it's ${OWNER}. Can you send photos or a quick video of the current work at ${n}${a}? Please include anything about to get covered up. Thanks!`],
+    ['📷 Photos', (n, a) => `Hi team, it's ${OWNER || 'me'}. Can you send photos or a quick video of the current work at ${n}${a}? Please include anything about to get covered up. Thanks!`],
     ['📅 Schedule', (n, a) => `Hi team, quick schedule update for ${n}${a}: `],
     ['⏰ I\'ll be there', (n, a) => `Hi team, I'll be at ${n}${a} tomorrow at 8:00 AM. Please make sure someone is on site. Thanks!`],
     ['⚠️ Problem', (n, a) => `Heads up on ${n}${a}: there's an issue. `],
@@ -819,7 +830,7 @@
     const jb = {
       [A]: { demo: true, addr: '123 Main St, Palm Springs, CA', upsell: 30000, last: d(-6), kind: 'visit', every: 5, kick: d(-6),
         subs: [{ name: 'Carlos', trade: 'Plumber', phone: '760 555 0101' }, { name: 'Mike', trade: 'Electrician', phone: '760 555 0102' }],
-        chat: [{ id: 'demo-m1', at: ago(50), kind: 'out', text: 'Hi team, it\'s ' + OWNER + '. Can you send photos of the current work at Martinez kitchen? Thanks!', to: ['Carlos', 'Mike'] },
+        chat: [{ id: 'demo-m1', at: ago(50), kind: 'out', text: 'Hi team, it\'s ' + (OWNER || 'me') + '. Can you send photos of the current work at Martinez kitchen? Thanks!', to: ['Carlos', 'Mike'] },
                { id: 'demo-m2', at: ago(48), kind: 'in', who: 'Carlos', text: 'Rough-in is done. Sending photos in a bit. Tile arrives Thursday.', star: true },
                { id: 'demo-m3', at: ago(47), kind: 'in', who: 'Mike', text: 'Panel upgrade is scheduled for Friday. Customer asked about adding under-cabinet lighting.' },
                { id: 'demo-m4', at: ago(3), kind: 'out', text: 'Great. Martinez wants a backsplash too. Let\'s price it.' }],
@@ -967,7 +978,7 @@
         toast(`${act === 'photosin' ? 'Photos' : 'Visit'} logged for ${n}`, () => { j.last = prev.last; j.kind = prev.kind; saveJobs(); render(); });
       } else if (act === 'asksub') {
         const subs = getSubs(j);
-        const send = x => location.href = smsHref(x && x.phone, `Hi${x && x.name ? ' ' + x.name : ''}, it's ${OWNER}. Can you send me photos or a quick video of the current work at ${n}${j.addr ? ' (' + j.addr + ')' : ''}? Please include anything about to get covered up. Thanks!`);
+        const send = x => location.href = smsHref(x && x.phone, `Hi${x && x.name ? ' ' + x.name : ''}, it's ${OWNER || 'me'}. Can you send me photos or a quick video of the current work at ${n}${j.addr ? ' (' + j.addr + ')' : ''}? Please include anything about to get covered up. Thanks!`);
         if (subs.length <= 1) send(subs[0]);
         else openPick('Who do you want to text?', subs.map(x => ({ label: '💬 ' + subLabel(x), fn: () => send(x) })));
       } else if (act === 'navto') window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(j.addr), '_blank');
@@ -1047,6 +1058,7 @@
     else if (id === 'teamBtn') openTeam();
     else if (id === 'demoBtn') { Object.values(jobs).some(j => j && j.demo) ? clearDemo() : loadDemo(); }
     else if (id === 'fbBtn') openFeedback();
+    else if (id === 'cloudBtn') { window.OAFsync ? window.OAFsync.open() : toast('Cloud is not available right now'); }
     else if (id === 'updateBtn') {
       toast('Updating...');
       const done = () => location.reload();
@@ -1083,6 +1095,16 @@
   $('#sumShare').onclick = () => { const t = $('#sumText').textContent; if (navigator.share) navigator.share({ text: t }).catch(() => {}); else $('#sumCopy').click(); };
   if (location.hash === '#evening') view = 'evening';
   render();
+  window.OAF = {
+    getState: () => ({ tasks, jobs, team }),
+    setState(st) {
+      tasks = st.tasks; jobs = st.jobs; team = st.team;
+      try { localStorage.setItem(KEY, JSON.stringify(tasks)); localStorage.setItem(JOBS_KEY, JSON.stringify(jobs)); localStorage.setItem(TEAM_KEY, JSON.stringify(team)); } catch {}
+      render();
+    },
+    onChange: null, blobOf,
+    setName(n) { if (n) { OWNER = n; try { localStorage.setItem('oaf-name-v1', n); } catch {} render(); } },
+  };
   window.__oafV = APP_VERSION; window.__oafReady = true;
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     const hadController = !!navigator.serviceWorker.controller; let reloaded = false;

@@ -26,8 +26,8 @@
 
   function buildDocs(st) {
     const d = {};
-    (st.tasks || []).forEach(t => { d[t.id] = { kind: 'task', data: t }; });
-    Object.entries(st.jobs || {}).forEach(([name, j]) => {
+    (st.tasks || []).filter(t => !t.demo).forEach(t => { d[t.id] = { kind: 'task', data: t }; });
+    Object.entries(st.jobs || {}).filter(([, j]) => !(j && j.demo)).forEach(([name, j]) => {
       const { chat, notes, ...rest } = j || {};
       d['job:' + name] = { kind: 'job', data: { ...rest, name } };
       (chat || []).forEach(m => { d[m.id] = { kind: 'msg', data: { ...m, job: name } }; });
