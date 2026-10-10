@@ -1,0 +1,31 @@
+/* Option 3 - HI-VIS: bold, jobsite, high contrast, hi-vis yellow + black */
+.hivis{
+  --bg:#ecebe6; --surface:#fff; --text:#101010; --muted:#55555a; --line:#101010;
+  --accent:#ffd400; --accent-ink:#101010; --accent-text:#101010; --danger:#d4210f; --warn:#a05a00;
+  --font:-apple-system,system-ui,"Segoe UI",Roboto,sans-serif; --head-weight:900; --head-transform:uppercase; --head-spacing:.02em;
+  --radius:6px; --radius-sm:5px; --border:2px; --shadow:3px 3px 0 #101010;
+  --head-bg:#101010; --head-text:#fff; --head-sub:#c9c9cc; --tag-bg:#ffd400;
+  --stat-bg:#fff; --stat-line:#fff; --stat-text:#101010;
+  --nav-bg:#101010; --nav-text:#a8a8ad; --nav-active:#ffd400;
+}
+.hivis .top{border-bottom:6px solid #ffd400}
+.hivis .switch{color:#ffd400}
+.hivis h1{font-size:22px}
+.hivis .stat{border-color:#101010;box-shadow:none}
+.hivis .stat b{font-size:28px}
+.hivis .section-title{color:#101010;background:#101010;color:#ffd400;display:inline-block;padding:3px 8px;border-radius:3px;letter-spacing:.1em}
+.hivis .section-title.overdue{background:#d4210f;color:#fff}
+.hivis .task.starred{border-left:10px solid #ffd400}
+.hivis .tag{border:2px solid #101010;font-weight:700;padding:1px 7px}
+.hivis .proj{background:#101010;color:#ffd400;padding:1px 7px;border-radius:3px}
+.hivis .check{border-color:#101010;border-radius:5px}
+.hivis .task.done .check{border-color:#101010;background:#12a150}
+.hivis .qbtn{border-color:#101010;color:#101010;background:#fff}
+.hivis .fab{border:3px solid #101010;box-shadow:4px 4px 0 #101010;border-radius:14px}
+.hivis .padd{border:2px solid #101010;border-radius:6px}
+.hivis nav{border-top:4px solid #ffd400}
+.hivis .sheet{border-radius:14px 14px 0 0;border-top:6px solid #ffd400}
+.hivis .chip.on{border-color:#101010}
+.hivis .btn{border:2px solid #101010}
+.hivis .btn.primary{box-shadow:3px 3px 0 #101010}
+.hivis .toast{background:#101010;border:2px solid #ffd400}

@@ -1,0 +1,14 @@
+/* Option 1 - BLUEPRINT: clean, trustworthy, navy header + safety orange */
+.blueprint{
+  --bg:#f2f5fa; --surface:#fff; --text:#0e1a2b; --muted:#66748a; --line:#e1e7f0;
+  --accent:#ff6a1a; --accent-ink:#fff; --accent-text:#d9520a;
+  --head-bg:linear-gradient(160deg,#0f2747,#17406f); --head-text:#fff; --head-sub:#b9c9e0;
+  --stat-bg:rgba(255,255,255,.1); --stat-line:rgba(255,255,255,.18); --stat-text:#fff; --stat-bad:#ffb089;
+  --tag-bg:#eef3fb; --radius:16px; --shadow:0 2px 8px rgba(15,39,71,.07);
+  --nav-active:#0f2747;
+}
+.blueprint .top{border-radius:0 0 26px 26px;padding-bottom:22px;margin-bottom:6px}
+.blueprint .stat.on{outline-color:#ff6a1a}
+.blueprint .stat b{color:#fff}.blueprint .stat.bad b{color:#ffb089}
+.blueprint .task.starred{border-left-color:#ff6a1a}
+.blueprint nav button.active svg{stroke:#ff6a1a}
