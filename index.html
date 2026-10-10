@@ -35,6 +35,7 @@
   <button class="cact" id="cWa" aria-label="Open WhatsApp group" hidden>↗</button>
 </div>
 <div class="composer" id="composer" hidden>
+  <div class="tray" id="tray" hidden></div>
   <div class="cbar">
     <button class="cplus" id="chatPlus" aria-label="Attach">＋</button>
     <div class="cinput"><textarea id="chatIn" rows="1" placeholder="Message"></textarea><button class="csticker" id="cQuick" aria-label="Quick messages">☺</button></div>
@@ -42,15 +43,27 @@
     <button class="cmain mic" id="chatSend" aria-label="Send"></button>
   </div>
   <div class="apanel" id="apanel" hidden>
+    <button data-a="cam"><i style="background:#ffe9db">📷</i>Camera</button>
+    <button data-a="vid"><i style="background:#ffe0e0">🎥</i>Video</button>
+    <button data-a="lib"><i style="background:#e0f0ff">🖼️</i>Photos &amp; videos</button>
+    <button data-a="doc"><i style="background:#e8e4ff">📄</i>Document</button>
     <button data-a="quick"><i style="background:#fff3d6">⚡</i>Quick messages</button>
-    <button data-a="photos"><i style="background:#e0f0ff">📷</i>Ask for photos</button>
-    <button data-a="reply"><i style="background:#e3f7e8">↙</i>Log a reply</button>
+    <button data-a="photos"><i style="background:#e0f7ef">🙏</i>Ask for photos</button>
+    <button data-a="reply"><i style="background:#e3eefc">↙</i>Log a reply</button>
     <button data-a="note"><i style="background:#fff7bf">📝</i>Save as note</button>
     <button data-a="loc"><i style="background:#e0f7ef">📍</i>Job location</button>
     <button data-a="summary"><i style="background:#ece6ff">📋</i>Summary</button>
-    <button data-a="via" id="apVia"><i style="background:#d9fdd3">📤</i>Sending via WhatsApp</button>
+    <button data-a="via" id="apVia"><i style="background:#e3f7e8">📤</i>Sending via WhatsApp</button>
     <button data-a="team"><i style="background:#ffe6e0">👥</i>My team</button>
   </div>
+</div>
+<input type="file" id="fCam" accept="image/*" capture="environment" hidden>
+<input type="file" id="fVid" accept="video/*" capture="environment" hidden>
+<input type="file" id="fLib" accept="image/*,video/*" multiple hidden>
+<input type="file" id="fDoc" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rtf,application/*,text/*" multiple hidden>
+<div class="viewer" id="viewer" hidden>
+  <div class="vbar"><button id="vClose">✕ Close</button><button id="vShare">⬆︎ Share / Save</button></div>
+  <div id="vBody"></div>
 </div>
 <div class="toast" id="toast"></div>
 <nav>

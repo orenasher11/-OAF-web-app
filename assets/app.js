@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '14';
+  const APP_VERSION = '15';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   const OWNER = 'Oren';
   const CATS = [
@@ -68,6 +68,7 @@
     if (doneRecent.length) { L.push('', `Done this week (${doneRecent.length}):`); doneRecent.slice(0, 5).forEach(t => L.push('  ✓ ' + t.title)); }
     const msgs = timeline(n).filter(x => x.kind !== 'sys').slice(-4).reverse();
     if (msgs.length) { L.push('', 'Recent messages and notes:'); msgs.forEach(x => L.push(`  • ${fmtStamp(new Date(x.ts).toISOString())} ${x.kind === 'out' ? 'You: ' : x.kind === 'in' ? (x.who || 'Reply') + ': ' : ''}${x.text}`)); }
+    const att = jobMedia(n); if (att.length) L.push('', `Media: ${att.filter(a => a.kind === 'image').length} photos, ${att.filter(a => a.kind === 'video').length} videos, ${att.filter(a => a.kind === 'file').length} files`);
     const watch = [];
     if (late.length) watch.push('Overdue tasks');
     if (v.state === 'late') watch.push('Site visit or photo check is overdue');
@@ -133,6 +134,61 @@
     if (j.last) items.push({ id: 'v', ts: new Date(j.last + 'T12:00:00').getTime(), kind: 'sys', text: j.kind === 'photos' ? '📷 Photos received from sub' : '🚗 Site visit logged' });
     return items.sort((a, b) => a.ts - b.ts);
   }
+  // ---- photos / videos / documents: stored on this phone in IndexedDB ----
+  let dbp = null; const memBlobs = {}, urlCache = {};
+  const mdb = () => dbp ||= new Promise((res, rej) => { const r = indexedDB.open('oaf-media', 1); r.onupgradeneeded = () => r.result.createObjectStore('files', { keyPath: 'id' }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  const idb = (mode, fn) => mdb().then(d => new Promise((res, rej) => { const t = d.transaction('files', mode), r = fn(t.objectStore('files')); t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); }));
+  const putFile = rec => idb('readwrite', st => st.put(rec));
+  const getFile = id => idb('readonly', st => st.get(id));
+  const delFile = id => { delete memBlobs[id]; if (urlCache[id]) { URL.revokeObjectURL(urlCache[id]); delete urlCache[id]; } return idb('readwrite', st => st.delete(id)).catch(() => {}); };
+  async function blobOf(id) { if (memBlobs[id]) return memBlobs[id]; const r = await getFile(id).catch(() => null); return r ? r.blob : null; }
+  async function urlOf(id) { if (urlCache[id]) return urlCache[id]; const b = await blobOf(id); return b ? (urlCache[id] = URL.createObjectURL(b)) : ''; }
+  const kindOf = f => /^image\//.test(f.type) ? 'image' : /^video\//.test(f.type) ? 'video' : 'file';
+  const fmtSize = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+  const fileIcon = n => /\.pdf$/i.test(n) ? '📕' : /\.(xls|xlsx|csv)$/i.test(n) ? '📗' : /\.(doc|docx|txt)$/i.test(n) ? '📘' : /\.(zip)$/i.test(n) ? '🗜️' : '📄';
+  async function shrinkImage(file) {
+    if (!/^image\//.test(file.type) || file.type === 'image/gif') return file;
+    try {
+      const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }), sc = Math.min(1, 1800 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement('canvas'); c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc);
+      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.82));
+      return blob && blob.size < file.size ? new File([blob], (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }) : file;
+    } catch { return file; }
+  }
+  let pending = [];
+  function mediaHTML(att) {
+    return `<div class="media n${Math.min(att.filter(a => a.kind !== 'file').length, 4)}">` + att.map(a => a.kind === 'image' ? `<img class="mimg" data-mid="${a.id}" alt="${esc(a.name)}">`
+      : a.kind === 'video' ? `<video class="mvid" data-mid="${a.id}" controls playsinline preload="metadata"></video>`
+      : `<button class="mfile" data-mid="${a.id}" data-name="${esc(a.name)}"><span class="ficn">${fileIcon(a.name)}</span><span class="fnm"><b>${esc(a.name)}</b><small>${fmtSize(a.size)}</small></span></button>`).join('') + '</div>';
+  }
+  function hydrateMedia() {
+    document.querySelectorAll('img[data-mid],video[data-mid]').forEach(el => { if (!el.src) urlOf(el.dataset.mid).then(u => { if (u) el.src = u; }); });
+  }
+  function jobMedia(n) { return ((jobs[n] || {}).chat || []).flatMap(x => (x.attach || []).map(a => ({ ...a, at: x.at }))); }
+  async function openViewer(id, name, kind) {
+    const u = await urlOf(id); if (!u) { toast('File not found on this phone'); return; }
+    $('#vBody').innerHTML = kind === 'image' ? `<img src="${u}" alt="">` : kind === 'video' ? `<video src="${u}" controls playsinline autoplay></video>` : `<iframe src="${u}" title="${esc(name)}"></iframe>`;
+    $('#viewer').dataset.mid = id; $('#viewer').dataset.name = name; $('#viewer').hidden = false;
+  }
+  async function shareFile(id, name) {
+    const b = await blobOf(id); if (!b) return;
+    const f = new File([b], name || 'file', { type: b.type });
+    if (navigator.canShare && navigator.canShare({ files: [f] })) navigator.share({ files: [f] }).catch(() => {});
+    else { const a = document.createElement('a'); a.href = await urlOf(id); a.download = name || 'file'; a.click(); }
+  }
+  function paintTray() {
+    $('#tray').hidden = !pending.length;
+    $('#tray').innerHTML = pending.map((p, i) => `<div class="titem">${p.kind === 'image' ? `<img src="${p.preview}" alt="">` : p.kind === 'video' ? `<span>🎬<br>${esc(fmtSize(p.size))}</span>` : `<span>${fileIcon(p.name)}<br>${esc(p.name.slice(0, 10))}</span>`}<button data-i="${i}" aria-label="Remove">×</button></div>`).join('');
+    updateMain(); layoutComposer();
+  }
+  async function addFiles(list) {
+    for (const f of [...list]) {
+      const k = kindOf(f), file = k === 'image' ? await shrinkImage(f) : f;
+      pending.push({ id: uid(), kind: k, name: f.name || (k === 'image' ? 'photo.jpg' : k === 'video' ? 'video.mov' : 'file'), size: file.size, mime: file.type || f.type, blob: file, preview: k === 'image' ? URL.createObjectURL(file) : '' });
+    }
+    paintTray(); $('#chatIn').focus();
+  }
   const NAME_COLORS = ['#0b7a6b', '#a24bbf', '#d1580b', '#1f6feb', '#c2185b', '#5d8a00', '#7b4fd1', '#b8860b'];
   const nameColor = nm => NAME_COLORS[[...String(nm || '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % NAME_COLORS.length];
   const MIC_SVG = '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 15a3.5 3.5 0 003.5-3.5V6a3.5 3.5 0 10-7 0v5.5A3.5 3.5 0 0012 15zm6-3.5a6 6 0 01-12 0H4.5a7.5 7.5 0 006.75 7.46V22h1.5v-3.04A7.5 7.5 0 0019.5 11.5z"/></svg>';
@@ -155,7 +211,8 @@
         ${x.kind === 'in' && first ? `<div class="bwho" style="color:${nameColor(x.who)}">${esc(x.who || 'Reply')}</div>` : ''}
         ${x.kind === 'out' && x.to && x.to.length ? `<div class="bto">To: ${esc(x.to.join(', '))}</div>` : ''}
         ${x.kind === 'note' ? '<div class="bto">📝 Note to self</div>' : ''}
-        <span class="btext">${esc(x.text)}</span><span class="btime">${time}${x.kind === 'out' ? ' <i class="tick">✓</i>' : ''}</span>
+        ${x.attach && x.attach.length ? mediaHTML(x.attach) : ''}
+        ${x.text ? `<span class="btext">${esc(x.text)}</span>` : ''}<span class="btime">${time}${x.kind === 'out' ? ' <i class="tick">✓</i>' : ''}</span>
         ${x.heart ? '<span class="react">❤️</span>' : ''}</div>`;
     });
     return out + '</div>';
@@ -168,7 +225,7 @@
     document.querySelector('main').style.paddingBottom = ($('#composer').offsetHeight + 14) + 'px';
   }
   if (window.visualViewport) { visualViewport.addEventListener('resize', layoutComposer); visualViewport.addEventListener('scroll', layoutComposer); }
-  function updateMain() { $('#chatSend').innerHTML = $('#chatIn').value.trim() ? SEND_SVG : MIC_SVG; $('#chatSend').classList.toggle('mic', !$('#chatIn').value.trim()); }
+  function updateMain() { const has = $('#chatIn').value.trim() || pending.length; $('#chatSend').innerHTML = has ? SEND_SVG : MIC_SVG; $('#chatSend').classList.toggle('mic', !has); }
   function paintChatHead() {
     const n = curJob, j = jobs[n] || {};
     $('#cName').textContent = j.addr || n;
@@ -179,7 +236,19 @@
   }
   function sendChat() {
     const text = $('#chatIn').value.trim();
-    if (!text) { toast('Tap the 🎤 on your keyboard to dictate'); $('#chatIn').focus(); return; }
+    if (!text && !pending.length) { toast('Tap the 🎤 on your keyboard to dictate'); $('#chatIn').focus(); return; }
+    if (pending.length) {
+      const files = pending.map(p => new File([p.blob], p.name, { type: p.mime }));
+      const attach = pending.map(p => { memBlobs[p.id] = p.blob; putFile({ id: p.id, job: curJob, name: p.name, mime: p.mime, size: p.size, blob: p.blob }).catch(() => toast('Could not save a file on this phone')); return { id: p.id, kind: p.kind, name: p.name, size: p.size, mime: p.mime }; });
+      pending.forEach(p => p.preview && URL.revokeObjectURL(p.preview));
+      try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
+      let shared = null;
+      if (navigator.canShare && navigator.canShare({ files })) shared = navigator.share({ files, text: text || undefined }).catch(() => {});
+      logMsg(curJob, 'out', text, { attach, via: 'share' });
+      pending = []; $('#chatIn').value = ''; paintTray(); autoGrow(); render();
+      if (!shared) toast('Saved in the chat. Sharing is not available on this device.');
+      return;
+    }
     if (sendVia === 'wa') {
       logMsg(curJob, 'out', text, { via: 'wa' });
       $('#chatIn').value = ''; autoGrow(); render();
@@ -349,11 +418,14 @@
         if (doneT.length) html += `<div class="section-title">Done (${doneT.length})</div>` + doneT.map(taskHTML).join('');
       } else {
         html += `<div class="section-title">Subs on this job</div>` + (getSubs(j).length ? `<div class="subchips jobsubs">${subChips(j, true)}</div>` : `<div class="hint">No subs yet. Tap Edit job to add them.</div>`);
+        const mm = jobMedia(n);
+        if (mm.length) html += `<div class="section-title">Photos, videos &amp; files (${mm.length})</div><div class="mgrid">` + mm.slice().reverse().map(a => a.kind === 'image' ? `<img class="mthumb" data-mid="${a.id}" data-k="image" alt="">` : `<button class="mthumb mtile" data-mid="${a.id}" data-name="${esc(a.name)}"><span>${a.kind === 'video' ? '🎬' : fileIcon(a.name)}</span><small>${esc(a.name.slice(0, 14))}</small></button>`).join('') + '</div>';
         html += `<div class="section-title">Job</div><div class="infocard">
           <div><span>Address</span><b>${esc(j.addr || 'none')}</b></div>
           <div><span>Upsell potential</span><b>${j.upsell ? money(j.upsell) : 'not set'}</b></div>
           <div><span>Last site check</span><b>${j.last ? agoText(j.last) + ' · ' + (j.kind === 'photos' ? 'photos' : 'on site') : 'none logged'}</b></div>
           <div><span>Check every</span><b>${j.every || 5} days</b></div>
+          <div><span>Photos, videos &amp; files</span><b>${jobMedia(n).length}</b></div>
           <div><span>WhatsApp group</span><b>${j.wa ? '<a href="' + esc(j.wa) + '">Open group</a>' : 'not linked'}</b></div></div>
           <div class="jobactions">
             <button class="jbtn primary" data-act="editjobd">✎ Edit job</button>
@@ -395,7 +467,7 @@
         <button id="updateBtn">🔄 Update app</button>
         <button id="clearDone">🧹 Clear completed</button>
         <input type="file" id="importFile" accept="application/json" hidden>
-      </div><div class="hint">Your tasks are stored on this phone only. Back up now and then.<br>Version ${APP_VERSION}</div>`;
+      </div><div class="hint">Your tasks are stored on this phone only. Back up now and then. Photos, videos and files stay on this phone and are not in the backup yet.<br>Version ${APP_VERSION}</div>`;
     }
     $('#stats').innerHTML = stats; $('#stats').hidden = !stats;
     $('#jobbar').hidden = ['upcoming', 'visits', 'job', 'evening'].includes(view);
@@ -412,6 +484,7 @@
     document.body.classList.toggle('inchat', inChat);
     if (!inChat) document.querySelector('main').style.paddingBottom = '';
     if (inChat) { paintChatHead(); updateMain(); layoutComposer(); requestAnimationFrame(() => { layoutComposer(); window.scrollTo(0, document.body.scrollHeight); }); }
+    hydrateMedia();
     $('#projList').innerHTML = [...new Set(tasks.map(t => t.project).filter(Boolean))].map(p => `<option value="${esc(p)}">`).join('');
   }
 
@@ -546,7 +619,14 @@
   $('#chatIn').addEventListener('blur', () => setTimeout(layoutComposer, 100));
   $('#chatSend').onclick = sendChat;
   $('#chatPlus').onclick = () => { const p = $('#apanel'); p.hidden = !p.hidden; if (!p.hidden) $('#chatIn').blur(); layoutComposer(); window.scrollTo(0, document.body.scrollHeight); };
-  $('#cCam').onclick = () => doAction('photos');
+  $('#cCam').onclick = () => doAction('cam');
+  $('#fCam').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
+  $('#fVid').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
+  $('#fLib').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
+  $('#fDoc').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
+  $('#tray').onclick = e => { const b = e.target.closest('[data-i]'); if (!b) return; const p = pending.splice(+b.dataset.i, 1)[0]; if (p && p.preview) URL.revokeObjectURL(p.preview); paintTray(); };
+  $('#vClose').onclick = () => { $('#viewer').hidden = true; $('#vBody').innerHTML = ''; };
+  $('#vShare').onclick = () => shareFile($('#viewer').dataset.mid, $('#viewer').dataset.name);
   $('#cQuick').onclick = () => doAction('quick');
   $('#cBack').onclick = () => { view = 'projects'; render(); window.scrollTo(0, 0); };
   $('#cTitle').onclick = () => { jobTab = 'info'; render(); window.scrollTo(0, 0); };
@@ -555,7 +635,11 @@
   function doAction(a) {
     $('#apanel').hidden = true; layoutComposer();
     const j = jobs[curJob] || {}, ad = j.addr ? ' (' + j.addr + ')' : '';
-    if (a === 'quick') openMsg(curJob);
+    if (a === 'cam') $('#fCam').click();
+    else if (a === 'vid') $('#fVid').click();
+    else if (a === 'lib') $('#fLib').click();
+    else if (a === 'doc') $('#fDoc').click();
+    else if (a === 'quick') openMsg(curJob);
     else if (a === 'photos') { $('#chatIn').value = TEMPLATES[0][1](curJob, ad); autoGrow(); $('#chatIn').focus(); }
     else if (a === 'loc') {
       if (!j.addr) { toast('Add the job address in Details first'); return; }
@@ -586,14 +670,17 @@
     $('#inBg').classList.remove('open'); render();
   };
   // WhatsApp-like gestures on bubbles: double-tap = heart, long-press = delete
-  const bubOf = e => e.target.closest && e.target.closest('.bub');
+  const bubOf = e => e.target.closest && !e.target.closest('.mvid') && e.target.closest('.bub');
   const findMsg = (id, k) => { const j = jobs[curJob] || {}; return (k === 'note' ? j.notes : j.chat || []).find(x => x.id === id); };
-  function pressStart(e) { const b = bubOf(e); if (!b) return; pressed = false; clearTimeout(pressTimer); pressTimer = setTimeout(() => { pressed = true; if (confirm('Delete this message?')) { const j = jobs[curJob] || {}; if (b.dataset.k === 'note') j.notes = (j.notes || []).filter(x => x.id !== b.dataset.id); else j.chat = (j.chat || []).filter(x => x.id !== b.dataset.id); saveJobs(); render(); } }, 600); }
+  function pressStart(e) { const b = bubOf(e); if (!b) return; pressed = false; clearTimeout(pressTimer); pressTimer = setTimeout(() => { pressed = true; if (confirm('Delete this message?')) { const j = jobs[curJob] || {}; if (b.dataset.k === 'note') j.notes = (j.notes || []).filter(x => x.id !== b.dataset.id); else { (j.chat || []).filter(x => x.id === b.dataset.id).forEach(x => (x.attach || []).forEach(a => delFile(a.id))); j.chat = (j.chat || []).filter(x => x.id !== b.dataset.id); } saveJobs(); render(); } }, 600); }
   const pressEnd = () => clearTimeout(pressTimer);
   $('#main').addEventListener('touchstart', pressStart, { passive: true });
   $('#main').addEventListener('mousedown', pressStart);
   ['touchend', 'touchmove', 'touchcancel', 'mouseup', 'mouseleave'].forEach(ev => $('#main').addEventListener(ev, pressEnd, { passive: true }));
   $('#main').addEventListener('click', e => {
+    const m = e.target.closest('.mimg,.mfile,.mthumb');
+    if (m) { openViewer(m.dataset.mid, m.dataset.name || m.alt || '', m.classList.contains('mimg') || m.dataset.k === 'image' ? 'image' : /\.(mp4|mov|m4v)$/i.test(m.dataset.name || '') ? 'video' : 'file'); return; }
+    if (e.target.closest('.mvid')) return;
     const b = bubOf(e); if (!b) return;
     if (pressed) { pressed = false; return; }
     const now = Date.now();
