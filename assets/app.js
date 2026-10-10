@@ -22,6 +22,12 @@
   try { jobs = JSON.parse(localStorage.getItem(JOBS_KEY)) || {}; } catch { jobs = {}; }
   const saveJobs = () => { try { localStorage.setItem(JOBS_KEY, JSON.stringify(jobs)); } catch {} };
   const money = n => n >= 1000 ? '$' + (n / 1000).toFixed(n % 1000 ? 1 : 0).replace(/\.0$/, '') + 'k' : '$' + n;
+  // a job can have several subs; older jobs only stored one (sub + phone)
+  const getSubs = j => (j && j.subs) ? j.subs : (j && j.sub ? [{ name: j.sub, phone: j.phone || '' }] : []);
+  const subLabel = x => `${x.name}${x.trade ? ' · ' + x.trade : ''}`;
+  const subChips = (j, tel) => getSubs(j).map(x => tel && x.phone
+    ? `<a class="subchip" href="tel:${esc(x.phone)}">👷 ${esc(subLabel(x))}</a>`
+    : `<span class="subchip">👷 ${esc(subLabel(x))}</span>`).join('');
   const daysBetween = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 864e5);
   function visitInfo(name) {
     const j = jobs[name] || {}, every = j.every || 5;
@@ -116,7 +122,7 @@
         const up = v.j.upsell ? `<span class="pup set">${money(v.j.upsell)} upsell</span>` : '';
         html += `<div class="vcard ${v.state}" data-p="${esc(v.n)}">
           <div class="vtop">
-            <div class="vtitle"><div class="vname">${esc(v.n)}</div><div class="vsub">${esc(v.j.addr || '') || (v.j.sub ? 'Sub: ' + esc(v.j.sub) : 'Add address and sub with ✎')}</div></div>
+            <div class="vtitle"><div class="vname">${esc(v.n)}</div><div class="vsub">${esc(v.j.addr || '') || 'Add address with ✎'}</div>${getSubs(v.j).length ? `<div class="subchips">${subChips(v.j)}</div>` : ''}</div>
             <span class="vbadge">${nextText(v)}</span>
           </div>
           <div class="vmeta"><span>Last: ${v.j.last ? agoText(v.j.last) + ' · ' + (v.j.kind === 'photos' ? 'photos' : 'on site') : 'none logged'}</span>${up}</div>
@@ -142,10 +148,11 @@
       });
     } else if (view === 'job') {
       const n = curJob, j = jobs[n] || {};
-      $('#h1').textContent = j.addr || n;
-      $('#sub').textContent = [j.addr ? n : '', j.sub ? 'Sub: ' + j.sub : ''].filter(Boolean).join(' · ') || 'Tap Edit to add the address and sub';
+      $('#h1').textContent = n;
+      $('#sub').textContent = j.addr || 'No address yet. Tap Edit job to add it.';
       const mine = open.filter(t => t.project === n);
       const doneT = tasks.filter(t => t.done && t.project === n);
+      if (getSubs(j).length) html += `<div class="subchips jobsubs">${subChips(j, true)}</div>`;
       html += `<div class="jobactions">
         <button class="jbtn primary" data-act="addto" data-p="${esc(n)}">＋ Add task</button>
         <button class="jbtn" data-act="editjobd">✎ Edit job</button>
@@ -171,7 +178,8 @@
             <span class="ficon">📁</span>
             <span class="fbody">
               <span class="faddr ${j.addr ? '' : 'none'}">${esc(j.addr || 'No address yet')}</span>
-              <span class="fname">${esc(n)}${j.sub ? ' · ' + esc(j.sub) : ''}</span>
+              <span class="fclient">${esc(n)}</span>
+              ${getSubs(j).length ? `<span class="subchips">${subChips(j)}</span>` : ''}
               <span class="fmeta">${mine.length} open${late ? ` · <em>${late} late</em>` : nxt && nxt.due ? ' · next ' + fmtDate(nxt.due) : ''}</span>
             </span>
             <span class="fright">${j.upsell ? `<span class="pup set">${money(j.upsell)}</span>` : ''}<i>›</i></span>
@@ -256,7 +264,9 @@
     if (!name) { $('#j-name').focus(); return; }
     const kick = $('#j-kick').value || addDays(1), time = $('#j-time').value || '08:00';
     const sub = $('#j-sub').value.trim(), amt = parseInt($('#j-upsell').value.replace(/[^0-9]/g, ''), 10) || 0;
-    const subTxt = sub || 'the sub';
+    const newSubs = sub ? [{ name: sub, phone: $('#j-phone').value.trim() }] : [];
+    const subs = newSubs.length ? newSubs : getSubs(jobs[name]);
+    const subTxt = subs.length ? subs.map(x => x.name).join(' & ') : 'the sub';
     const plan = [
       [0, 'Pick up coffee + donuts, meet ' + subTxt + ' at the site', 'visit', false, true],
       [0, 'Take photos of the site before work starts', 'visit', false, true],
@@ -270,7 +280,7 @@
     plan.forEach(([off, title, cat, star, timed], i) => tasks.push({
       id: uid(), done: false, title, project: name, due: addDays(off, kick), cat, star, notes: '', ord: i, ...(timed ? { time } : {}),
     }));
-    jobs[name] = { ...(jobs[name] || {}), upsell: amt, sub, phone: $('#j-phone').value.trim(), addr: $('#j-addr').value.trim(), kick, every: jobs[name]?.every || 5 };
+    jobs[name] = { ...(jobs[name] || {}), upsell: amt, subs, sub: undefined, phone: undefined, addr: $('#j-addr').value.trim(), kick, every: jobs[name]?.every || 5 };
     saveJobs(); save();
     closeJob(); view = 'today'; filter = 'all'; render(); window.scrollTo(0, 0);
     toast(`${plan.length} tasks created for ${name}`);
@@ -281,15 +291,29 @@
   function openEdit(n) {
     const j = jobs[n] || {}; editName = n; editEvery = j.every || 5;
     $('#eTitle').textContent = n;
-    $('#e-addr').value = j.addr || ''; $('#e-sub').value = j.sub || ''; $('#e-phone').value = j.phone || ''; $('#e-upsell').value = j.upsell || '';
+    $('#e-addr').value = j.addr || ''; $('#e-upsell').value = j.upsell || '';
+    $('#subRows').innerHTML = ''; const cur = getSubs(j); (cur.length ? cur : [{}]).forEach(addSubRow);
     paintEvery(); $('#editBg').classList.add('open');
   }
+  function addSubRow(x = {}) {
+    const d = document.createElement('div'); d.className = 'subrow';
+    d.innerHTML = `<input class="s-name" placeholder="Sub name" autocomplete="off" value="${esc(x.name || '')}">
+      <input class="s-trade" placeholder="Trade (plumber...)" autocomplete="off" value="${esc(x.trade || '')}">
+      <input class="s-phone" type="tel" inputmode="tel" placeholder="Phone" value="${esc(x.phone || '')}">
+      <button type="button" class="s-del" aria-label="Remove sub">×</button>`;
+    $('#subRows').appendChild(d);
+  }
+  $('#addSub').onclick = () => addSubRow();
+  $('#subRows').onclick = e => { if (e.target.classList.contains('s-del')) e.target.closest('.subrow').remove(); };
   const closeEdit = () => $('#editBg').classList.remove('open');
   $('#eCancel').onclick = closeEdit;
+  $('#pCancel').onclick = () => $('#pickBg').classList.remove('open');
+  $('#pickBg').onclick = e => { if (e.target.id === 'pickBg') $('#pickBg').classList.remove('open'); };
   $('#editBg').onclick = e => { if (e.target.id === 'editBg') closeEdit(); };
   $('#everyChips').onclick = e => { const c = e.target.closest('.chip'); if (c) { editEvery = +c.dataset.e; paintEvery(); } };
   $('#eSave').onclick = () => {
-    jobs[editName] = { ...(jobs[editName] || {}), addr: $('#e-addr').value.trim(), sub: $('#e-sub').value.trim(), phone: $('#e-phone').value.trim(),
+    jobs[editName] = { ...(jobs[editName] || {}), addr: $('#e-addr').value.trim(), sub: undefined, phone: undefined,
+      subs: [...document.querySelectorAll('#subRows .subrow')].map(r => ({ name: r.querySelector('.s-name').value.trim(), trade: r.querySelector('.s-trade').value.trim(), phone: r.querySelector('.s-phone').value.trim() })).filter(x => x.name),
       upsell: parseInt($('#e-upsell').value.replace(/[^0-9]/g, ''), 10) || 0, every: editEvery };
     saveJobs(); closeEdit(); render();
   };
@@ -337,8 +361,14 @@
         j.last = todayISO(); j.kind = act === 'photosin' ? 'photos' : 'visit'; saveJobs(); render();
         toast(`${act === 'photosin' ? 'Photos' : 'Visit'} logged for ${n}`, () => { j.last = prev.last; j.kind = prev.kind; saveJobs(); render(); });
       } else if (act === 'asksub') {
-        const msg = `Hi${j.sub ? ' ' + j.sub : ''}, it's ${OWNER}. Can you send me photos or a quick video of the current work at ${n}${j.addr ? ' (' + j.addr + ')' : ''}? Please include anything about to get covered up. Thanks!`;
-        location.href = smsHref(j.phone, msg);
+        const subs = getSubs(j);
+        const send = x => location.href = smsHref(x && x.phone, `Hi${x && x.name ? ' ' + x.name : ''}, it's ${OWNER}. Can you send me photos or a quick video of the current work at ${n}${j.addr ? ' (' + j.addr + ')' : ''}? Please include anything about to get covered up. Thanks!`);
+        if (subs.length <= 1) send(subs[0]);
+        else {
+          $('#pickList').innerHTML = subs.map((x, i) => `<button class="pickbtn" data-i="${i}">💬 ${esc(subLabel(x))}</button>`).join('');
+          $('#pickBg').classList.add('open');
+          $('#pickList').onclick = ev => { const b = ev.target.closest('[data-i]'); if (b) { $('#pickBg').classList.remove('open'); send(subs[+b.dataset.i]); } };
+        }
       } else if (act === 'navto') window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(j.addr), '_blank');
       else if (act === 'editjob') openEdit(n);
       return;

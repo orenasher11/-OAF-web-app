@@ -100,10 +100,9 @@
     <h2 id="eTitle">Job</h2>
     <label for="e-addr">Job address</label>
     <input id="e-addr" placeholder="e.g. 123 Main St, Palm Springs" autocomplete="off">
-    <label for="e-sub">Sub</label>
-    <input id="e-sub" placeholder="e.g. Carlos plumbing" autocomplete="off">
-    <label for="e-phone">Sub phone</label>
-    <input id="e-phone" type="tel" inputmode="tel" placeholder="e.g. 760 555 1234" autocomplete="off">
+    <label>Subs on this job</label>
+    <div id="subRows"></div>
+    <button type="button" class="chip addsub" id="addSub">＋ Add another sub</button>
     <label for="e-upsell">Upsell potential in $</label>
     <input id="e-upsell" inputmode="numeric" placeholder="e.g. 30000" autocomplete="off">
     <label>Visit or photo check every</label>
@@ -117,6 +116,14 @@
       <button class="btn ghost" id="eCancel">Cancel</button>
       <button class="btn primary" id="eSave">Save</button>
     </div>
+  </div>
+</div>
+<div class="sheet-bg" id="pickBg">
+  <div class="sheet" role="dialog">
+    <div class="grab"></div>
+    <h2>Who do you want to text?</h2>
+    <div id="pickList"></div>
+    <div class="actions"><button class="btn ghost" id="pCancel">Cancel</button></div>
   </div>
 </div>
 <script src="assets/app.js"></script>

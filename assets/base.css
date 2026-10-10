@@ -120,3 +120,16 @@ nav button{position:relative}
 .jobactions{display:flex;gap:8px;margin:16px 0 4px;flex-wrap:wrap}
 .jbtn{flex:1 1 auto;min-height:44px;border-radius:var(--radius-sm);border:var(--border) solid var(--line);background:var(--surface);font-weight:700;font-size:14px;padding:0 12px}
 .jbtn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+
+.fclient{font-weight:800;font-size:19px;font-family:var(--font-head);color:var(--client,var(--text));line-height:1.2;margin-top:2px}
+.faddr{font-size:12.5px!important;font-weight:600!important;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.faddr.none{text-transform:none;letter-spacing:0}
+.subchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.subchip{display:inline-block;font-size:12.5px;font-weight:600;padding:3px 10px;border-radius:999px;background:var(--tag-bg,var(--bg));color:var(--text);text-decoration:none;border:var(--border) solid var(--line)}
+.jobsubs{margin:14px 0 0}
+.jobsubs .subchip{font-size:14px;padding:6px 12px}
+.subrow{display:grid;grid-template-columns:1fr 1fr 28px;gap:6px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px dashed var(--line)}
+.subrow .s-name{grid-column:1/3;grid-row:1}.subrow .s-trade{grid-column:1;grid-row:2}.subrow .s-phone{grid-column:2/4;grid-row:2}
+.subrow .s-del{grid-column:3;grid-row:1;border:0;background:none;font-size:24px;color:var(--danger)}
+.addsub{margin-top:2px}
+.pickbtn{width:100%;text-align:left;padding:14px;margin-top:8px;border-radius:var(--radius-sm);border:var(--border) solid var(--line);background:var(--bg);font-weight:700;font-size:16px}
