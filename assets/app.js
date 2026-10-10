@@ -1,4 +1,5 @@
 (() => {
+  const APP_VERSION = '13';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   const OWNER = 'Oren';
   const CATS = [
@@ -347,9 +348,10 @@
         <button id="exportBtn">⬇ Back up</button>
         <button id="importBtn">⬆ Restore</button>
         <button id="teamBtn">👥 My team</button>
+        <button id="updateBtn">🔄 Update app</button>
         <button id="clearDone">🧹 Clear completed</button>
         <input type="file" id="importFile" accept="application/json" hidden>
-      </div><div class="hint">Your tasks are stored on this phone only. Back up now and then.</div>`;
+      </div><div class="hint">Your tasks are stored on this phone only. Back up now and then.<br>Version ${APP_VERSION}</div>`;
     }
     $('#stats').innerHTML = stats; $('#stats').hidden = !stats;
     $('#jobbar').hidden = ['upcoming', 'visits', 'job', 'evening'].includes(view);
@@ -709,6 +711,12 @@
       a.download = `tasks-backup-${todayISO()}.json`; a.click();
     } else if (id === 'importBtn') $('#importFile').click();
     else if (id === 'teamBtn') openTeam();
+    else if (id === 'updateBtn') {
+      toast('Updating...');
+      const done = () => location.reload();
+      const regs = navigator.serviceWorker ? navigator.serviceWorker.getRegistrations() : Promise.resolve([]);
+      regs.then(rs => Promise.all(rs.map(r => r.unregister()))).then(() => window.caches ? caches.keys() : []).then(ks => Promise.all(ks.map(k => caches.delete(k)))).then(done, done);
+    }
     else if (id === 'clearDone' && confirm('Remove all completed tasks?')) { tasks = tasks.filter(t => !t.done); save(); render(); }
   };
   $('#main').addEventListener('change', e => {
@@ -739,5 +747,12 @@
   $('#sumShare').onclick = () => { const t = $('#sumText').textContent; if (navigator.share) navigator.share({ text: t }).catch(() => {}); else $('#sumCopy').click(); };
   if (location.hash === '#evening') view = 'evening';
   render();
-  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    const hadController = !!navigator.serviceWorker.controller; let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+      reg.update().catch(() => {});
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+    }).catch(() => {});
+  }
 })();
