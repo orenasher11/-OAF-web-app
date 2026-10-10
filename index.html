@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f6feb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>My Tasks</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #fff; --text: #1a1d21; --muted: #6b7280;
+    --line: #e5e7eb; --accent: #1f6feb; --red: #d92d20; --green: #12a150; --amber: #b54708;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1115; --card: #1a1d23; --text: #eef0f3; --muted: #9aa3af; --line: #2a2f38; --accent: #5b9bff; --red: #ff6b60; --green: #3ddc84; --amber: #f5a524; }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.4 -apple-system, system-ui, Segoe UI, Roboto, sans-serif; padding-bottom: 110px; }
+  header { padding: 20px 16px 8px; padding-top: max(20px, env(safe-area-inset-top)); }
+  header h1 { margin: 0; font-size: 26px; }
+  header .sub { color: var(--muted); font-size: 14px; margin-top: 2px; }
+  main { padding: 0 16px; }
+  .section-title { font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: 20px 0 8px; }
+  .section-title.overdue { color: var(--red); }
+  .task { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 8px; display: flex; gap: 12px; align-items: flex-start; }
+  .check { flex: none; width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--muted); background: none; padding: 0; margin-top: 1px; color: #fff; font-size: 16px; line-height: 1; cursor: pointer; }
+  .task.done .check { background: var(--green); border-color: var(--green); }
+  .body { flex: 1; min-width: 0; cursor: pointer; }
+  .title { font-weight: 600; word-break: break-word; }
+  .task.done .title { text-decoration: line-through; color: var(--muted); }
+  .meta { font-size: 13px; color: var(--muted); margin-top: 2px; display: flex; flex-wrap: wrap; gap: 4px 10px; }
+  .meta .proj { color: var(--accent); font-weight: 600; }
+  .meta .late { color: var(--red); font-weight: 600; }
+  .meta .today { color: var(--amber); font-weight: 600; }
+  .notes { font-size: 14px; color: var(--muted); margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+  .empty { text-align: center; color: var(--muted); padding: 40px 16px; }
+  nav { position: fixed; left: 0; right: 0; bottom: 0; background: var(--card); border-top: 1px solid var(--line); display: flex; padding-bottom: env(safe-area-inset-bottom); }
+  nav button { flex: 1; background: none; border: 0; padding: 14px 0 12px; font: inherit; font-size: 14px; color: var(--muted); cursor: pointer; }
+  nav button.active { color: var(--accent); font-weight: 700; }
+  .fab { position: fixed; right: 16px; bottom: calc(76px + env(safe-area-inset-bottom)); width: 58px; height: 58px; border-radius: 50%; border: 0; background: var(--accent); color: #fff; font-size: 32px; box-shadow: 0 4px 14px rgba(0,0,0,.3); cursor: pointer; }
+  .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: flex-end; z-index: 10; }
+  .sheet-bg.open { display: flex; }
+  .sheet { background: var(--card); width: 100%; border-radius: 18px 18px 0 0; padding: 18px 16px; padding-bottom: max(18px, env(safe-area-inset-bottom)); max-height: 92vh; overflow: auto; }
+  .sheet h2 { margin: 0 0 12px; font-size: 20px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin: 12px 0 4px; }
+  input, textarea { width: 100%; font: inherit; font-size: 16px; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  textarea { min-height: 70px; resize: vertical; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .chip { border: 1px solid var(--line); background: var(--bg); color: var(--text); border-radius: 999px; padding: 8px 14px; font: inherit; font-size: 14px; cursor: pointer; }
+  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .actions { display: flex; gap: 10px; margin-top: 18px; }
+  .btn { flex: 1; padding: 14px; border-radius: 12px; border: 0; font: inherit; font-weight: 700; cursor: pointer; }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.ghost { background: var(--bg); color: var(--text); }
+  .btn.danger { background: none; color: var(--red); flex: none; padding: 14px 8px; }
+  .tools { margin-top: 28px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .tools button { font: inherit; font-size: 14px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="h1">Today</h1>
+  <div class="sub" id="sub"></div>
+</header>
+<main id="main"></main>
+
+<button class="fab" id="fab" aria-label="Add task">+</button>
+
+<nav>
+  <button data-view="today" class="active">Today</button>
+  <button data-view="upcoming">Upcoming</button>
+  <button data-view="projects">Projects</button>
+</nav>
+
+<div class="sheet-bg" id="bg">
+  <div class="sheet" role="dialog">
+    <h2 id="sheetTitle">New task</h2>
+    <label for="f-title">What needs to be done?</label>
+    <input id="f-title" placeholder="e.g. Call plumber about rough-in" autocomplete="off">
+    <label for="f-project">Project / customer</label>
+    <input id="f-project" list="projList" placeholder="e.g. Martinez kitchen" autocomplete="off">
+    <datalist id="projList"></datalist>
+    <label>Due</label>
+    <div class="chips" id="dueChips">
+      <button type="button" class="chip" data-d="0">Today</button>
+      <button type="button" class="chip" data-d="1">Tomorrow</button>
+      <button type="button" class="chip" data-d="2">In 2 days</button>
+      <button type="button" class="chip" data-d="7">Next week</button>
+    </div>
+    <input type="date" id="f-due" style="margin-top:8px">
+    <label for="f-notes">Notes (optional)</label>
+    <textarea id="f-notes" placeholder="Phone number, details, amounts..."></textarea>
+    <div class="actions">
+      <button class="btn danger" id="delBtn" style="display:none">Delete</button>
+      <button class="btn ghost" id="cancelBtn">Cancel</button>
+      <button class="btn primary" id="saveBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const KEY = 'oaf-tasks-v1';
+  let tasks = [];
+  let view = 'today';
+  let editingId = null;
+
+  const $ = s => document.querySelector(s);
+
+  function load() {
+    try { tasks = JSON.parse(localStorage.getItem(KEY)) || []; } catch { tasks = []; }
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(tasks)); } catch {}
+  }
+
+  const pad = n => String(n).padStart(2, '0');
+  const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const todayISO = () => iso(new Date());
+  function addDays(n) { const d = new Date(); d.setDate(d.getDate() + n); return iso(d); }
+  function fmtDate(s) {
+    if (!s) return 'No date';
+    const t = todayISO();
+    if (s === t) return 'Today';
+    if (s === addDays(1)) return 'Tomorrow';
+    if (s === addDays(-1)) return 'Yesterday';
+    const [y, m, d] = s.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+  function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+  function taskHTML(t) {
+    const t0 = todayISO();
+    let dateCls = '';
+    if (!t.done && t.due) dateCls = t.due < t0 ? 'late' : t.due === t0 ? 'today' : '';
+    return `<div class="task ${t.done ? 'done' : ''}" data-id="${t.id}">
+      <button class="check" data-act="toggle" aria-label="Toggle done">${t.done ? '✓' : ''}</button>
+      <div class="body" data-act="edit">
+        <div class="title">${esc(t.title)}</div>
+        <div class="meta">
+          ${t.project ? `<span class="proj">${esc(t.project)}</span>` : ''}
+          <span class="${dateCls}">${fmtDate(t.due)}</span>
+        </div>
+        ${t.notes ? `<div class="notes">${esc(t.notes)}</div>` : ''}
+      </div>
+    </div>`;
+  }
+
+  const byDue = (a, b) => (a.due || '9999').localeCompare(b.due || '9999') || a.title.localeCompare(b.title);
+
+  function render() {
+    const t0 = todayISO();
+    const open = tasks.filter(t => !t.done).sort(byDue);
+    const main = $('#main');
+    let html = '';
+
+    if (view === 'today') {
+      $('#h1').textContent = 'Today';
+      $('#sub').textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+      const overdue = open.filter(t => t.due && t.due < t0);
+      const today = open.filter(t => t.due === t0);
+      const doneToday = tasks.filter(t => t.done && t.doneOn === t0);
+      if (overdue.length) html += `<div class="section-title overdue">Overdue (${overdue.length})</div>` + overdue.map(taskHTML).join('');
+      if (today.length) html += `<div class="section-title">Due today (${today.length})</div>` + today.map(taskHTML).join('');
+      if (!overdue.length && !today.length) html += `<div class="empty">Nothing due. Tap + to add a task.</div>`;
+      if (doneToday.length) html += `<div class="section-title">Done today (${doneToday.length})</div>` + doneToday.map(taskHTML).join('');
+    } else if (view === 'upcoming') {
+      $('#h1').textContent = 'Upcoming';
+      $('#sub').textContent = '';
+      const later = open.filter(t => !t.due || t.due > t0);
+      if (!later.length) html += `<div class="empty">No upcoming tasks.</div>`;
+      let last = null;
+      later.forEach(t => {
+        const k = t.due || '';
+        if (k !== last) { html += `<div class="section-title">${t.due ? fmtDate(t.due) : 'No date'}</div>`; last = k; }
+        html += taskHTML(t);
+      });
+    } else {
+      $('#h1').textContent = 'Projects';
+      $('#sub').textContent = 'Open tasks by project';
+      const groups = {};
+      open.forEach(t => { (groups[t.project || 'No project'] ||= []).push(t); });
+      const names = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+      if (!names.length) html += `<div class="empty">No open tasks.</div>`;
+      names.forEach(n => {
+        html += `<div class="section-title">${esc(n)} (${groups[n].length})</div>` + groups[n].map(taskHTML).join('');
+      });
+      html += `<div class="tools">
+        <button id="exportBtn">Back up</button>
+        <button id="importBtn">Restore</button>
+        <button id="clearDone">Clear completed</button>
+        <input type="file" id="importFile" accept="application/json" style="display:none">
+      </div>
+      <div class="hint">Your tasks are stored on this phone only. Use Back up now and then.</div>`;
+    }
+    main.innerHTML = html;
+    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+    $('#projList').innerHTML = [...new Set(tasks.map(t => t.project).filter(Boolean))].map(p => `<option value="${esc(p)}">`).join('');
+  }
+
+  // --- sheet ---
+  function setDue(v) {
+    $('#f-due').value = v || '';
+    document.querySelectorAll('#dueChips .chip').forEach(c => c.classList.toggle('on', v && addDays(+c.dataset.d) === v));
+  }
+  function openSheet(id) {
+    editingId = id || null;
+    const t = id ? tasks.find(x => x.id === id) : null;
+    $('#sheetTitle').textContent = t ? 'Edit task' : 'New task';
+    $('#f-title').value = t ? t.title : '';
+    $('#f-project').value = t ? t.project : '';
+    $('#f-notes').value = t ? t.notes : '';
+    setDue(t ? t.due : todayISO());
+    $('#delBtn').style.display = t ? '' : 'none';
+    $('#bg').classList.add('open');
+    if (!t) setTimeout(() => $('#f-title').focus(), 50);
+  }
+  function closeSheet() { $('#bg').classList.remove('open'); editingId = null; }
+
+  function saveSheet() {
+    const title = $('#f-title').value.trim();
+    if (!title) { $('#f-title').focus(); return; }
+    const data = { title, project: $('#f-project').value.trim(), due: $('#f-due').value, notes: $('#f-notes').value.trim() };
+    if (editingId) Object.assign(tasks.find(x => x.id === editingId), data);
+    else tasks.push({ id: uid(), done: false, ...data });
+    save(); closeSheet(); render();
+  }
+
+  // --- events ---
+  $('#fab').onclick = () => openSheet();
+  $('#cancelBtn').onclick = closeSheet;
+  $('#saveBtn').onclick = saveSheet;
+  $('#bg').onclick = e => { if (e.target.id === 'bg') closeSheet(); };
+  $('#f-title').addEventListener('keydown', e => { if (e.key === 'Enter') saveSheet(); });
+  $('#delBtn').onclick = () => {
+    if (editingId && confirm('Delete this task?')) { tasks = tasks.filter(x => x.id !== editingId); save(); closeSheet(); render(); }
+  };
+  $('#dueChips').onclick = e => { const c = e.target.closest('.chip'); if (c) setDue(addDays(+c.dataset.d)); };
+  $('#f-due').onchange = e => setDue(e.target.value);
+
+  document.querySelector('nav').onclick = e => {
+    const b = e.target.closest('button'); if (!b) return;
+    view = b.dataset.view; render(); window.scrollTo(0, 0);
+  };
+
+  $('#main').onclick = e => {
+    const act = e.target.closest('[data-act]'); if (!act) return;
+    const card = act.closest('.task'); const t = tasks.find(x => x.id === card.dataset.id);
+    if (act.dataset.act === 'toggle') {
+      t.done = !t.done; t.doneOn = t.done ? todayISO() : null; save(); render();
+    } else openSheet(t.id);
+  };
+  $('#main').addEventListener('click', e => {
+    if (e.target.id === 'exportBtn') {
+      const blob = new Blob([JSON.stringify(tasks, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `tasks-backup-${todayISO()}.json`; a.click();
+    } else if (e.target.id === 'importBtn') $('#importFile').click();
+    else if (e.target.id === 'clearDone') {
+      if (confirm('Remove all completed tasks?')) { tasks = tasks.filter(t => !t.done); save(); render(); }
+    }
+  });
+  $('#main').addEventListener('change', e => {
+    if (e.target.id !== 'importFile') return;
+    const f = e.target.files[0]; if (!f) return;
+    f.text().then(txt => {
+      try {
+        const data = JSON.parse(txt);
+        if (!Array.isArray(data)) throw 0;
+        if (confirm(`Replace current tasks with ${data.length} from the backup?`)) { tasks = data; save(); render(); }
+      } catch { alert('That file is not a valid backup.'); }
+    });
+  });
+
+  // refresh at midnight / when app is reopened
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+
+  load(); render();
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+})();
+</script>
+</body>
+</html>
