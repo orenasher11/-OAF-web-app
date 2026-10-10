@@ -133,3 +133,20 @@ nav button{position:relative}
 .subrow .s-del{grid-column:3;grid-row:1;border:0;background:none;font-size:24px;color:var(--danger)}
 .addsub{margin-top:2px}
 .pickbtn{width:100%;text-align:left;padding:14px;margin-top:8px;border-radius:var(--radius-sm);border:var(--border) solid var(--line);background:var(--bg);font-weight:700;font-size:16px}
+
+.evlink{width:100%;display:flex;align-items:center;gap:8px;margin-top:14px;padding:12px 14px;border-radius:var(--radius);border:var(--border) solid var(--line);background:var(--surface);color:var(--text);text-align:left;font-size:15px;box-shadow:var(--shadow)}
+.evlink span{margin-left:auto;font-weight:700;color:var(--accent-text,var(--accent))}
+.evstats{display:flex;gap:8px;margin-top:16px}
+.evstats div{flex:1;background:var(--surface);border:var(--border) solid var(--line);border-radius:var(--radius-sm);padding:10px 12px;display:flex;flex-direction:column}
+.evstats b{font-size:24px;line-height:1.1;font-family:var(--font-head)}.evstats span{font-size:12px;color:var(--muted)}
+.empty.small{padding:18px 8px}.empty.small .big{font-size:28px}
+.remcard{background:var(--surface);border:var(--border) solid var(--line);border-radius:var(--radius);padding:14px}
+.remtxt{font-size:14px;color:var(--muted);margin-bottom:10px}
+.jbtn.wide{width:100%;margin-top:12px}
+.noteadd{display:flex;flex-direction:column;gap:8px}
+.noteadd textarea{min-height:76px}
+.note{background:var(--surface);border:var(--border) solid var(--line);border-radius:var(--radius-sm);padding:10px 12px;margin-top:8px}
+.nmeta{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);font-weight:700}
+.nmeta button{border:0;background:none;font-size:22px;line-height:1;color:var(--muted);padding:0 4px}
+.ntext{margin-top:4px;white-space:pre-wrap;word-break:break-word;font-size:15px}
+.sumtext{white-space:pre-wrap;word-break:break-word;font:14px/1.5 ui-monospace,Menlo,Consolas,monospace;background:var(--bg);border:var(--border) solid var(--line);border-radius:var(--radius-sm);padding:12px;margin:8px 0 0;max-height:55vh;overflow:auto;user-select:text;-webkit-user-select:text}

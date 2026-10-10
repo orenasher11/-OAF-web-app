@@ -44,6 +44,76 @@
     return activeProjects().map(n => ({ n, ...visitInfo(n) }))
       .sort((a, b) => order[a.state] - order[b.state] || (b.j.upsell || 0) - (a.j.upsell || 0) || a.n.localeCompare(b.n));
   }
+  const fmtStamp = iso => new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const REM_KEY = 'oaf-reminder-v1';
+  let remTime = '18:00';
+  try { remTime = localStorage.getItem(REM_KEY) || '18:00'; } catch {}
+  const fmtDue = t => t.due ? fmtDate(t.due).toLowerCase() : 'no date';
+
+  function jobSummary(n) {
+    const j = jobs[n] || {}, t0 = todayISO(), v = visitInfo(n), subs = getSubs(j);
+    const mine = tasks.filter(t => !t.done && t.project === n).sort(cmp);
+    const late = mine.filter(t => t.due && t.due < t0);
+    const doneRecent = tasks.filter(t => t.done && t.project === n && t.doneOn && daysBetween(t.doneOn, t0) <= 7);
+    const L = [`${n}${j.addr ? ' - ' + j.addr : ''}`];
+    if (subs.length) L.push('Subs: ' + subs.map(subLabel).join(', '));
+    if (j.upsell) L.push('Upsell potential: ' + money(j.upsell));
+    L.push('', late.length ? `⚠ ${late.length} overdue ${late.length === 1 ? 'task' : 'tasks'}` : '✓ Nothing overdue');
+    L.push('Site check: ' + (j.last ? `last ${j.kind === 'photos' ? 'photos' : 'on-site visit'} ${agoText(j.last).toLowerCase()}` : 'none logged') + ` (${nextText(v).toLowerCase()})`);
+    L.push('', `Open tasks (${mine.length}):`);
+    mine.slice(0, 8).forEach(t => L.push(`  ${t.due && t.due < t0 ? '⚠' : '•'} ${t.title} (${fmtDue(t)})`));
+    if (mine.length > 8) L.push(`  ...and ${mine.length - 8} more`);
+    if (!mine.length) L.push('  none');
+    if (doneRecent.length) { L.push('', `Done this week (${doneRecent.length}):`); doneRecent.slice(0, 5).forEach(t => L.push('  ✓ ' + t.title)); }
+    const notes = (j.notes || []).slice(0, 3);
+    if (notes.length) { L.push('', 'Recent notes:'); notes.forEach(x => L.push(`  • ${fmtStamp(x.at)}: ${x.text}`)); }
+    const watch = [];
+    if (late.length) watch.push('Overdue tasks');
+    if (v.state === 'late') watch.push('Site visit or photo check is overdue');
+    if (!j.addr) watch.push('No address saved');
+    if (!j.upsell) watch.push('No upsell amount set');
+    const noPhone = subs.filter(x => !x.phone).map(x => x.name);
+    if (noPhone.length) watch.push('No phone number for ' + noPhone.join(', '));
+    if (watch.length) { L.push('', 'Watch-outs:'); watch.forEach(w => L.push('  • ' + w)); }
+    L.push('', mine[0] ? `Next step: ${mine[0].title} (${fmtDue(mine[0])})` : 'Next step: no open tasks. Add the next step.');
+    return L.join('\n');
+  }
+  function eveningSummary() {
+    const t0 = todayISO(), tmr = addDays(1), L = [`Evening review - ${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}`, ''];
+    const list = visitList();
+    if (!list.length) L.push('No active jobs.');
+    list.forEach(v => {
+      const open = tasks.filter(t => !t.done && t.project === v.n).sort(cmp), late = open.filter(t => t.due && t.due < t0).length;
+      const bits = [`${open.length} open`]; if (late) bits.push(`${late} overdue`); if (v.state === 'late') bits.push('visit overdue');
+      L.push(`• ${v.n}${v.j.addr ? ' (' + v.j.addr + ')' : ''}: ${bits.join(', ')}${open[0] ? '. Next: ' + open[0].title : ''}`);
+    });
+    const tm = tasks.filter(t => !t.done && t.due === tmr).sort(cmp);
+    L.push('', `Tomorrow (${tm.length}):`); tm.forEach(t => L.push(`  • ${t.title}${t.project ? ' - ' + t.project : ''}${t.time ? ' @ ' + fmtTime(t.time) : ''}`));
+    if (!tm.length) L.push('  nothing scheduled');
+    L.push('', `Done today: ${tasks.filter(t => t.done && t.doneOn === t0).length}`);
+    return L.join('\n');
+  }
+  function notesHTML(n) {
+    const notes = (jobs[n] || {}).notes || [];
+    return `<div class="section-title">Notes</div>
+      <div class="noteadd"><textarea id="noteIn" placeholder="What happened today? Tap the 🎤 on your keyboard to talk."></textarea>
+      <button class="jbtn primary" data-act="addnote">Add note</button></div>` +
+      notes.map(x => `<div class="note"><div class="nmeta"><span>${fmtStamp(x.at)}</span><button data-act="delnote" data-id="${x.id}" aria-label="Delete note">×</button></div><div class="ntext">${esc(x.text)}</div></div>`).join('');
+  }
+  function downloadReminder(time) {
+    const [h, m] = time.split(':'), d = new Date(), pad2 = pad;
+    const start = `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}T${h}${m}00`;
+    const url = location.origin + location.pathname + '#evening';
+    const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//OAF Tasks//EN', 'BEGIN:VEVENT', 'UID:oaf-evening-review@oaf-tasks',
+      'DTSTAMP:' + new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z', 'DTSTART:' + start, 'DURATION:PT15M', 'RRULE:FREQ=DAILY',
+      'SUMMARY:Evening review - update jobs and tasks', 'DESCRIPTION:Open the app: ' + url, 'URL:' + url,
+      'BEGIN:VALARM', 'TRIGGER:PT0M', 'ACTION:DISPLAY', 'DESCRIPTION:Evening review', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' })); a.download = 'evening-review.ics'; a.click();
+  }
+  function showText(title, text) {
+    $('#sumTitle').textContent = title; $('#sumText').textContent = text; $('#sumBg').classList.add('open');
+  }
   const smsHref = (phone, body) => `sms:${phone || ''}${/iPhone|iPad|Mac/.test(navigator.userAgent) ? '&' : '?'}body=${encodeURIComponent(body)}`;
   function fmtTime(t) {
     if (!t) return '';
@@ -91,6 +161,7 @@
   function render() {
     const t0 = todayISO();
     const open = tasks.filter(t => !t.done).sort(cmp);
+    const open_ = n => open.filter(t => t.project === n);
     let html = '', stats = '';
 
     if (view === 'today') {
@@ -108,7 +179,9 @@
       if (filter === 'all' || filter === 'done') if (doneToday.length) html += `<div class="section-title">Done today</div>` + doneToday.map(taskHTML).join('');
       const needV = visitList().filter(v => v.state === 'late').length;
       if (needV && filter === 'all') html = `<button class="alert" data-go="visits">🚗 <b>${needV}</b> ${needV === 1 ? 'job needs' : 'jobs need'} a site visit<span>Open ›</span></button>` + html;
+      const evlink = `<button class="evlink" data-go="evening">🌙 <b>Evening review</b><span>Open ›</span></button>`;
       if (!html) html = `<div class="empty"><div class="big">✓</div>${filter === 'all' ? 'Nothing due. Tap + to add a task.' : 'Nothing here.'}</div>`;
+      if (filter === 'all') { const k = html.startsWith('<button class="alert"') ? html.indexOf('</button>') + 9 : 0; html = html.slice(0, k) + evlink + html.slice(k); }
     } else if (view === 'visits') {
       $('#h1').textContent = 'Site Visits';
       const list = visitList();
@@ -146,6 +219,29 @@
         if (k !== last) { html += `<div class="section-title">${t.due ? fmtDate(t.due) : 'No date'}</div>`; last = k; }
         html += taskHTML(t);
       });
+    } else if (view === 'evening') {
+      $('#h1').textContent = '🌙 Evening review';
+      $('#sub').textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+      const list = visitList().map(v => {
+        const open = open_(v.n), late = open.filter(t => t.due && t.due < t0).length, issues = [];
+        if (late) issues.push(`${late} overdue ${late === 1 ? 'task' : 'tasks'}`);
+        if (v.state === 'late') issues.push('visit overdue');
+        return { ...v, issues, open };
+      });
+      const attn = list.filter(v => v.issues.length);
+      const tm = open.filter(t => t.due === addDays(1));
+      const doneN = tasks.filter(t => t.done && t.doneOn === t0).length;
+      html += `<div class="evstats"><div><b>${attn.length}</b><span>need attention</span></div><div><b>${tm.length}</b><span>due tomorrow</span></div><div><b>${doneN}</b><span>done today</span></div></div>`;
+      html += `<div class="section-title">Needs attention tonight</div>`;
+      html += attn.length ? attn.map(v => `<button class="folder hasLate" data-act="openjob" data-p="${esc(v.n)}"><span class="ficon">⚠️</span><span class="fbody"><span class="fclient">${esc(v.n)}</span><span class="fmeta"><em>${v.issues.join(' · ')}</em></span></span><span class="fright"><i>›</i></span></button>`).join('')
+        : `<div class="empty small"><div class="big">✓</div>All jobs are on track.</div>`;
+      html += `<div class="section-title">Tomorrow</div>` + (tm.length ? tm.map(taskHTML).join('') : `<div class="empty small">Nothing scheduled for tomorrow.</div>`);
+      html += `<div class="section-title">Daily reminder</div><div class="remcard">
+        <div class="remtxt">Get a reminder every evening that opens this screen.</div>
+        <div class="chips" id="remChips">${['17:00', '18:00', '19:00', '20:00'].map(t => `<button type="button" class="chip ${remTime === t ? 'on' : ''}" data-rem="${t}">${fmtTime(t)}</button>`).join('')}</div>
+        <button class="jbtn primary wide" data-act="setrem">🔔 Add daily reminder to Calendar</button>
+        <div class="hint">If nothing opens, set a daily alarm in the Clock app and label it "Evening review".</div></div>
+        <div class="jobactions"><button class="jbtn" data-act="evcopy">📋 Copy / share summary</button></div>`;
     } else if (view === 'job') {
       const n = curJob, j = jobs[n] || {};
       $('#h1').textContent = n;
@@ -155,11 +251,13 @@
       if (getSubs(j).length) html += `<div class="subchips jobsubs">${subChips(j, true)}</div>`;
       html += `<div class="jobactions">
         <button class="jbtn primary" data-act="addto" data-p="${esc(n)}">＋ Add task</button>
+        <button class="jbtn" data-act="summary">📝 Summary</button>
         <button class="jbtn" data-act="editjobd">✎ Edit job</button>
         <button class="jbtn" data-act="upsell" data-p="${esc(n)}">${j.upsell ? money(j.upsell) + ' upsell' : '+ Upsell $'}</button>
       </div>`;
       html += mine.length ? mine.map(taskHTML).join('') : `<div class="empty"><div class="big">✓</div>No open tasks on this job.</div>`;
       if (doneT.length) html += `<div class="section-title">Done (${doneT.length})</div>` + doneT.map(taskHTML).join('');
+      html += notesHTML(n);
     } else {
       $('#h1').textContent = 'Projects';
       const names = activeProjects();
@@ -194,8 +292,9 @@
       </div><div class="hint">Your tasks are stored on this phone only. Back up now and then.</div>`;
     }
     $('#stats').innerHTML = stats; $('#stats').hidden = !stats;
-    $('#jobbar').hidden = view === 'upcoming' || view === 'visits' || view === 'job';
-    $('#back').hidden = view !== 'job';
+    $('#jobbar').hidden = ['upcoming', 'visits', 'job', 'evening'].includes(view);
+    $('#back').hidden = view !== 'job' && view !== 'evening';
+    $('#back').textContent = view === 'evening' ? '‹ Today' : '‹ Projects';
     const lateN = visitList().filter(v => v.state === 'late').length;
     $('#vbadge').textContent = lateN || ''; $('#vbadge').hidden = !lateN;
     const inPlay = [...new Set(open.map(t => t.project).filter(Boolean))].reduce((a, n) => a + (jobs[n]?.upsell || 0), 0);
@@ -327,7 +426,7 @@
 
   // ---- events ----
   $('#fab').onclick = () => openSheet(null, view === 'job' ? curJob : '');
-  $('#back').onclick = () => { view = 'projects'; render(); window.scrollTo(0, 0); };
+  $('#back').onclick = () => { view = view === 'evening' ? 'today' : 'projects'; render(); window.scrollTo(0, 0); };
   $('#cancelBtn').onclick = closeSheet;
   $('#saveBtn').onclick = saveSheet;
   $('#bg').onclick = e => { if (e.target.id === 'bg') closeSheet(); };
@@ -350,6 +449,8 @@
   };
 
   $('#main').onclick = e => {
+    const rem = e.target.closest('[data-rem]');
+    if (rem) { remTime = rem.dataset.rem; try { localStorage.setItem(REM_KEY, remTime); } catch {} return render(); }
     const go = e.target.closest('[data-go]');
     if (go) { view = go.dataset.go; filter = 'all'; render(); window.scrollTo(0, 0); return; }
     const el = e.target.closest('[data-act]');
@@ -379,6 +480,19 @@
       if (act === 'addto') return openSheet(null, el.dataset.p);
       if (act === 'openjob') { curJob = el.dataset.p; view = 'job'; render(); window.scrollTo(0, 0); return; }
       if (act === 'editjobd') return openEdit(curJob);
+      if (act === 'summary') return showText('Summary', jobSummary(curJob));
+      if (act === 'evcopy') return showText('Evening review', eveningSummary());
+      if (act === 'setrem') return downloadReminder(remTime);
+      if (act === 'addnote') {
+        const txt = ($('#noteIn').value || '').trim(); if (!txt) { $('#noteIn').focus(); return; }
+        const j = jobs[curJob] = jobs[curJob] || {};
+        j.notes = [{ id: uid(), at: new Date().toISOString(), text: txt }, ...(j.notes || [])]; saveJobs(); return render();
+      }
+      if (act === 'delnote') {
+        const j = jobs[curJob] || {}, gone = (j.notes || []).find(x => x.id === el.dataset.id); if (!gone) return;
+        j.notes = j.notes.filter(x => x.id !== gone.id); saveJobs(); render();
+        return toast('Note deleted', () => { j.notes = [gone, ...(j.notes || [])].sort((a, b) => b.at.localeCompare(a.at)); saveJobs(); render(); });
+      }
       if (act === 'upsell') {
         const n = el.dataset.p; if (!n) return;
         const v = prompt(`Upsell potential for ${n} (in dollars, e.g. 30000):`, jobs[n]?.upsell || '');
@@ -424,6 +538,14 @@
   $('#toast').onclick = e => { if (e.target.id === 'undoBtn' && lastUndo) { lastUndo(); lastUndo = null; $('#toast').classList.remove('show'); } };
   document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
 
+  $('#sumClose').onclick = () => $('#sumBg').classList.remove('open');
+  $('#sumBg').onclick = e => { if (e.target.id === 'sumBg') $('#sumBg').classList.remove('open'); };
+  $('#sumCopy').onclick = async () => {
+    const t = $('#sumText').textContent;
+    try { await navigator.clipboard.writeText(t); toast('Copied'); } catch { const r = document.createRange(); r.selectNodeContents($('#sumText')); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); toast('Text selected - tap Copy'); }
+  };
+  $('#sumShare').onclick = () => { const t = $('#sumText').textContent; if (navigator.share) navigator.share({ text: t }).catch(() => {}); else $('#sumCopy').click(); };
+  if (location.hash === '#evening') view = 'evening';
   render();
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
