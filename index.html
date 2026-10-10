@@ -9,8 +9,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.svg">
 <title>My Tasks</title>
-<link rel="stylesheet" href="assets/base.css?v=18">
-<link rel="stylesheet" href="assets/theme.css?v=18">
+<link rel="stylesheet" href="assets/base.css?v=19">
+<link rel="stylesheet" href="assets/theme.css?v=19">
 </head>
 <body class="blueprint">
 <div class="app">
@@ -32,7 +32,7 @@
   <div class="cavatar"><svg viewBox="0 0 24 24" width="26" height="26" fill="#0b7a4b"><path d="M16 11a3 3 0 100-6 3 3 0 000 6zM8 11a3 3 0 100-6 3 3 0 000 6zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></div>
   <button class="ctitle" id="cTitle"><b id="cName"></b><span id="cMembers"></span></button>
   <button class="cact" id="cTasks" aria-label="Tasks">✅<i id="cTaskN"></i></button>
-  <button class="cact" id="cWa" aria-label="Open WhatsApp group" hidden>↗</button>
+  <button class="cact" id="cCall" aria-label="Call">📞</button>
 </div>
 <div class="composer" id="composer" hidden>
   <div class="tray" id="tray" hidden></div>
@@ -161,7 +161,7 @@
 <div class="sheet-bg" id="pickBg">
   <div class="sheet" role="dialog">
     <div class="grab"></div>
-    <h2>Who do you want to text?</h2>
+    <h2 id="pickTitle">Who do you want to text?</h2>
     <div id="pickList"></div>
     <div class="actions"><button class="btn ghost" id="pCancel">Cancel</button></div>
   </div>
@@ -237,7 +237,7 @@
 <script>
 // Safety net: shows a repair bar if the app fails to start or throws an error. Never deletes your saved tasks.
 (function () {
-  var EXPECT = '18', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
+  var EXPECT = '19', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
   function show(t) { try { msg.textContent = t; bar.hidden = false; } catch (e) {} }
   window.__oafNotify = show;
   window.addEventListener('error', function (e) { if (e.message && /ResizeObserver|Script error/.test(e.message)) return; show('Error: ' + (e.message || 'unknown') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
@@ -263,6 +263,6 @@
   }, 3500);
 })();
 </script>
-<script src="assets/app.js?v=18"></script>
+<script src="assets/app.js?v=19"></script>
 </body>
 </html>

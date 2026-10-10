@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '18';
+  const APP_VERSION = '19';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   const OWNER = 'Oren';
   const CATS = [
@@ -132,7 +132,7 @@
   }
   function timeline(n) {
     const j = jobs[n] || {}, items = [];
-    (j.notes || []).forEach(x => items.push({ id: x.id, ts: new Date(x.at).getTime(), kind: 'note', text: x.text }));
+    (j.notes || []).forEach(x => items.push({ id: x.id, ts: new Date(x.at).getTime(), kind: 'note', text: x.text, star: x.star, heart: x.heart }));
     (j.chat || []).forEach(x => items.push({ ...x, ts: new Date(x.at).getTime() }));
     tasks.filter(t => t.done && t.project === n && t.doneOn).forEach(t => items.push({ id: 'd' + t.id, ts: new Date(t.doneAt || t.doneOn + 'T12:00:00').getTime(), kind: 'sys', text: '✓ Done: ' + t.title }));
     if (j.last) items.push({ id: 'v', ts: new Date(j.last + 'T12:00:00').getTime(), kind: 'sys', text: j.kind === 'photos' ? '📷 Photos received from sub' : '🚗 Site visit logged' });
@@ -216,7 +216,7 @@
         ${x.kind === 'out' && x.to && x.to.length ? `<div class="bto">To: ${esc(x.to.join(', '))}</div>` : ''}
         ${x.kind === 'note' ? '<div class="bto">📝 Note to self</div>' : ''}
         ${x.attach && x.attach.length ? mediaHTML(x.attach) : ''}
-        ${x.text ? `<span class="btext">${esc(x.text)}</span>` : ''}<span class="btime">${time}${x.kind === 'out' ? ' <i class="tick">✓</i>' : ''}</span>
+        ${x.text ? `<span class="btext">${esc(x.text)}</span>` : ''}<span class="btime">${x.star ? '<i class="bstar">★</i> ' : ''}${time}${x.kind === 'out' ? ' <i class="tick">✓</i>' : ''}</span>
         ${x.heart ? '<span class="react">❤️</span>' : ''}</div>`;
     });
     return out + '</div>';
@@ -235,7 +235,7 @@
     $('#cName').textContent = j.addr || n;
     const names = [...new Set([...getSubs(j), ...team].map(x => x.name))];
     $('#cMembers').textContent = [...names, 'You'].join(', ');
-    $('#cTaskN').textContent = tasks.filter(t => !t.done && t.project === n).length || ''; $('#cWa').hidden = !j.wa;
+    $('#cTaskN').textContent = tasks.filter(t => !t.done && t.project === n).length || '';
     $('#apVia').lastChild.textContent = sendVia === 'wa' ? 'Sending via WhatsApp' : 'Sending via Messages';
   }
   function sendChat() {
@@ -278,6 +278,118 @@
       } else if (out.length && line.trim()) out[out.length - 1].text += '\n' + line;
     });
     return out;
+  }
+  // ---- WhatsApp-style group info screens ----
+  let tabHist = [], mediaTab = 'media', chatSearch = false, pendingJump = null;
+  const waNum = p => { const d = String(p || '').replace(/\D/g, ''); return d.length === 10 ? '1' + d : d; };
+  function goTab(t) { if (t !== jobTab) tabHist.push(jobTab); jobTab = t; chatSearch = false; render(); window.scrollTo(0, 0); }
+  function backTab() { jobTab = tabHist.pop() || 'chat'; chatSearch = false; render(); if (jobTab !== 'chat') window.scrollTo(0, 0); }
+  function defaultGroupPhones(j) { return getSubs(j).filter(x => hasPhone(x.phone)).map(x => cleanPhone(x.phone)); }
+  function membersOf(n) {
+    const j = jobs[n] || {}, g = j.group;
+    return [...getSubs(j).map(x => ({ ...x, role: x.trade || 'Sub', kind: 'sub' })),
+            ...team.filter(x => g && g.includes(cleanPhone(x.phone))).map(x => ({ ...x, kind: 'team' }))];
+  }
+  function openPick(title, items) {
+    $('#pickTitle').textContent = title;
+    $('#pickList').innerHTML = items.map((it, i) => `<button class="pickbtn ${it.danger ? 'dng' : ''}" data-i="${i}">${esc(it.label)}</button>`).join('');
+    $('#pickList').onclick = ev => { const b = ev.target.closest('[data-i]'); if (!b) return; $('#pickBg').classList.remove('open'); items[+b.dataset.i].fn(); };
+    $('#pickBg').classList.add('open');
+  }
+  const label2 = x => `${x.name}${x.role ? ' · ' + x.role : ''}`;
+  function callPeople(n) {
+    const m = membersOf(n).filter(x => hasPhone(x.phone));
+    if (!m.length) { toast('Add a phone number first (Edit job)'); return; }
+    if (m.length === 1) { location.href = 'tel:' + cleanPhone(m[0].phone); return; }
+    openPick('Who do you want to call?', m.map(x => ({ label: '📞 ' + label2(x), fn: () => { location.href = 'tel:' + cleanPhone(x.phone); } })));
+  }
+  function memberMenu(n, i) {
+    const x = membersOf(n)[i]; if (!x) return; const ok = hasPhone(x.phone), j = jobs[n] = jobs[n] || {};
+    const items = [];
+    if (ok) items.push({ label: '📞 Call ' + x.name, fn: () => { location.href = 'tel:' + cleanPhone(x.phone); } },
+      { label: '💬 Text ' + x.name, fn: () => { location.href = smsHref(x.phone, ''); } },
+      { label: '🟢 WhatsApp ' + x.name, fn: () => { location.href = 'https://wa.me/' + waNum(x.phone); } });
+    else items.push({ label: 'No phone number saved', fn: () => openEdit(n) });
+    if (x.kind === 'team') items.push({ label: 'Remove from this group', danger: true, fn: () => { j.group = (j.group || defaultGroupPhones(j)).filter(p => p !== cleanPhone(x.phone)); saveJobs(); render(); } });
+    else items.push({ label: '✎ Edit in job details', fn: () => openEdit(n) });
+    openPick(label2(x), items);
+  }
+  function addMemberMenu(n) {
+    const j = jobs[n] = jobs[n] || {}, inG = j.group || defaultGroupPhones(j);
+    const items = team.filter(x => hasPhone(x.phone) && !inG.includes(cleanPhone(x.phone))).map(x => ({ label: '＋ ' + label2(x), fn: () => { j.group = [...(j.group || defaultGroupPhones(j)), cleanPhone(x.phone)]; saveJobs(); render(); toast(x.name + ' added'); } }));
+    items.push({ label: '＋ New sub or person…', fn: () => { openEdit(n); addSubRow(); } }, { label: '👥 Manage my team', fn: () => { teamFromMsg = false; openTeam(); } });
+    openPick('Add to this group', items);
+  }
+  const findMsg = (id, k) => { const j = jobs[curJob] || {}; return (k === 'note' ? (j.notes || []) : (j.chat || [])).find(x => x.id === id); };
+  function delMsg(id, k) {
+    const j = jobs[curJob] || {};
+    if (k === 'note') j.notes = (j.notes || []).filter(x => x.id !== id);
+    else { (j.chat || []).filter(x => x.id === id).forEach(x => (x.attach || []).forEach(a => delFile(a.id))); j.chat = (j.chat || []).filter(x => x.id !== id); }
+    saveJobs(); render();
+  }
+  function msgMenu(id, k) {
+    const m = findMsg(id, k); if (!m) return; const j = jobs[curJob];
+    const items = [{ label: m.star ? '☆ Remove star' : '⭐ Star message', fn: () => { m.star = !m.star; saveJobs(); render(); toast(m.star ? 'Starred' : 'Star removed'); } },
+      { label: m.heart ? '💔 Remove ❤️' : '❤️ React', fn: () => { m.heart = !m.heart; saveJobs(); render(); } }];
+    if (m.text) items.push({ label: '📋 Copy text', fn: async () => { try { await navigator.clipboard.writeText(m.text); toast('Copied'); } catch { toast('Could not copy'); } } });
+    items.push({ label: '🗑 Delete', danger: true, fn: () => { if (confirm('Delete this message?')) delMsg(id, k); } });
+    openPick('Message', items);
+  }
+  const linksOf = n => timeline(n).filter(x => x.kind !== 'sys' && x.text).flatMap(x => (x.text.match(/https?:\/\/[^\s<>"']+/g) || []).map(u => ({ u, ts: x.ts, who: x.kind === 'in' ? x.who : 'You' })));
+  const sbar = (back, title, right = '') => `<div class="sbar"><button class="sback" data-act="back" aria-label="Back">‹</button><div class="stitle">${title}</div><div class="sright">${right}</div></div>`;
+  const srow = (icon, label, val, act, extra = '') => `<button class="srow" data-act="${act}" ${extra}><span class="sico">${icon}</span><span class="slbl">${label}</span><span class="sval">${val}</span><span class="schev">›</span></button>`;
+  function screenInfo(n) {
+    const j = jobs[n] || {}, mem = membersOf(n), media = jobMedia(n), starred = timeline(n).filter(x => x.star && x.kind !== 'sys').length;
+    const openN = tasks.filter(t => !t.done && t.project === n).length, links = linksOf(n).length;
+    const avatar = x => `<span class="mav" style="background:${nameColor(x.name)}">${esc((x.name || '?').trim()[0].toUpperCase())}</span>`;
+    return `<div class="sbar"><button class="sback" data-act="back" aria-label="Back">‹</button><div class="sright"><button class="spill" data-act="editjobd">✎ Edit</button></div></div>
+      <div class="ginfo"><div class="gavatar"><svg viewBox="0 0 24 24" width="54" height="54" fill="currentColor"><path d="M16 11a3 3 0 100-6 3 3 0 000 6zM8 11a3 3 0 100-6 3 3 0 000 6zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></div>
+        <h2 class="gtitle">${esc(j.addr || n)}</h2>
+        <div class="gsub">Group · <b>${mem.length + 1} members</b></div>
+        <div class="gsub2">${esc(n)}</div></div>
+      <div class="gactions">
+        <button data-act="callall"><i>📞</i>Call</button>
+        <button data-act="${j.addr ? 'navjob' : 'editjobd'}"><i>🧭</i>Navigate</button>
+        <button data-act="addmember"><i>＋</i>Add</button>
+        <button data-act="search"><i>🔍</i>Search</button></div>
+      <div class="ssec">Media</div><div class="scard">
+        ${srow('🖼️', 'Media, links and docs', media.length + links, 'jtab', 'data-tab="media"')}
+        ${srow('⭐', 'Starred messages', starred, 'jtab', 'data-tab="starred"')}
+        ${srow('✅', 'To-do &amp; checklists', openN ? openN + ' open' : '✓', 'jtab', 'data-tab="tasks"')}
+        ${srow('📝', 'Job summary', '', 'summary')}</div>
+      <div class="ssec">${mem.length + 1} members</div><div class="scard">
+        <div class="mrow me">${`<span class="mav" style="background:#0f2747">${esc(OWNER[0])}</span>`}<span class="mbody"><b>${esc(OWNER)}</b><small>You</small></span></div>
+        ${mem.map((x, i) => `<div class="mrow" data-act="member" data-i="${i}">${avatar(x)}<span class="mbody"><b>${esc(x.name)}</b><small>${esc(x.role || '')}${x.phone ? ' · ' + esc(x.phone) : ' · no phone'}</small></span>${hasPhone(x.phone) ? `<a class="mcall" href="tel:${esc(cleanPhone(x.phone))}" aria-label="Call">📞</a>` : ''}</div>`).join('')}
+        <button class="srow addm" data-act="addmember"><span class="sico">＋</span><span class="slbl">Add member</span></button></div>
+      <div class="ssec">Job settings</div><div class="scard">
+        ${srow('💰', 'Upsell potential', j.upsell ? money(j.upsell) : 'Set', 'upsell', `data-p="${esc(n)}"`)}
+        ${srow('🚗', 'Site check every', (j.every || 5) + ' days', 'editjobd')}
+        ${srow('🕒', 'Last site check', j.last ? agoText(j.last) : 'none', 'editjobd')}
+        ${srow('🔗', 'WhatsApp group link', j.wa ? 'Open' : 'Add', j.wa ? 'openwa' : 'editjobd')}
+        ${srow('📤', 'Send chat messages via', sendVia === 'wa' ? 'WhatsApp' : 'Messages', 'togvia')}</div>`;
+  }
+  function screenTasks(n) {
+    const all = tasks.filter(t => t.project === n), chk = all.filter(t => t.ord !== undefined).sort((a, b) => a.ord - b.ord);
+    const todo = all.filter(t => !t.done && t.ord === undefined).sort(cmp), doneT = all.filter(t => t.done && t.ord === undefined);
+    const dn = chk.filter(t => t.done).length;
+    return sbar(0, 'To-do &amp; checklists', `<button class="spill primary" data-act="addto" data-p="${esc(n)}">＋ Task</button>`) +
+      (chk.length ? `<div class="ssec">Kickoff checklist · ${dn} of ${chk.length}</div><div class="prog"><i style="width:${Math.round(dn / chk.length * 100)}%"></i></div>` + chk.map(taskHTML).join('') : '') +
+      `<div class="ssec">To-do · ${todo.length} open</div>` + (todo.length ? todo.map(taskHTML).join('') : `<div class="empty small">No open to-dos. Tap ＋ Task to add one.</div>`) +
+      (doneT.length ? `<div class="ssec">Done · ${doneT.length}</div>` + doneT.map(taskHTML).join('') : '');
+  }
+  function screenMedia(n) {
+    const mm = jobMedia(n).slice().reverse(), photos = mm.filter(a => a.kind !== 'file'), docs = mm.filter(a => a.kind === 'file'), links = linksOf(n).slice().reverse();
+    const tab = (k, l, c) => `<button class="${mediaTab === k ? 'on' : ''}" data-act="mtab" data-t="${k}">${l} ${c}</button>`;
+    let body = '';
+    if (mediaTab === 'media') body = photos.length ? '<div class="mgrid">' + photos.map(a => a.kind === 'image' ? `<img class="mthumb" data-mid="${a.id}" data-k="image" alt="">` : `<button class="mthumb mtile" data-mid="${a.id}" data-name="${esc(a.name)}"><span>🎬</span><small>${esc(a.name.slice(0, 14))}</small></button>`).join('') + '</div>' : `<div class="empty small"><div class="big">🖼️</div>No photos or videos yet.</div>`;
+    else if (mediaTab === 'docs') body = docs.length ? '<div class="scard">' + docs.map(a => `<button class="srow mfile2" data-mid="${a.id}" data-name="${esc(a.name)}"><span class="sico">${fileIcon(a.name)}</span><span class="slbl"><b>${esc(a.name)}</b><small>${fmtSize(a.size)} · ${fmtDate(iso(new Date(a.at)))}</small></span><span class="schev">›</span></button>`).join('') + '</div>' : `<div class="empty small"><div class="big">📄</div>No documents yet.</div>`;
+    else body = links.length ? '<div class="scard">' + links.map(l => `<button class="srow" data-act="openlink" data-u="${esc(l.u)}"><span class="sico">🔗</span><span class="slbl"><b class="lnk">${esc(l.u)}</b><small>${esc(l.who)} · ${fmtDate(iso(new Date(l.ts)))}</small></span><span class="schev">›</span></button>`).join('') + '</div>' : `<div class="empty small"><div class="big">🔗</div>No links yet.</div>`;
+    return sbar(0, 'Media, links and docs') + `<div class="seg">${tab('media', 'Media', photos.length)}${tab('docs', 'Docs', docs.length)}${tab('links', 'Links', links.length)}</div>` + body;
+  }
+  function screenStarred(n) {
+    const st = timeline(n).filter(x => x.star && x.kind !== 'sys').reverse();
+    return sbar(0, 'Starred messages') + (st.length ? st.map(x => `<button class="starcard" data-act="jump" data-id="${x.id}"><div class="sh"><b style="color:${x.kind === 'in' ? nameColor(x.who) : '#0f2747'}">${x.kind === 'in' ? esc(x.who || 'Reply') : 'You'}</b><span>${fmtDate(iso(new Date(x.ts)))} · ${new Date(x.ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></div><div class="st">${x.text ? esc(x.text) : '📎 ' + ((x.attach || []).map(a => a.name).join(', ') || 'Attachment')}</div></button>`).join('')
+      : `<div class="empty small"><div class="big">⭐</div>No starred messages yet.<br>Touch and hold a message in the chat, then tap Star.</div>`);
   }
   const smsHref = (phone, body) => `sms:${phone || ''}${/iPhone|iPad|Mac/.test(navigator.userAgent) ? '&' : '?'}body=${encodeURIComponent(body)}`;
   function fmtTime(t) {
@@ -408,36 +520,13 @@
         <div class="hint">If nothing opens, set a daily alarm in the Clock app and label it "Evening review".</div></div>
         <div class="jobactions"><button class="jbtn" data-act="evcopy">📋 Copy / share summary</button></div>`;
     } else if (view === 'job') {
-      const n = curJob, j = jobs[n] || {};
-      $('#h1').textContent = n;
-      $('#sub').textContent = j.addr || 'No address yet. Open Details to add it.';
-      const mine = open.filter(t => t.project === n);
-      const doneT = tasks.filter(t => t.done && t.project === n);
-      if (jobTab !== 'chat') html += `<div class="jtabs">${[['chat', '💬 Chat'], ['tasks', '✅ Tasks' + (mine.length ? ' (' + mine.length + ')' : '')], ['info', 'ℹ️ Details']]
-        .map(([k, l]) => `<button class="jtab ${jobTab === k ? 'on' : ''}" data-act="jtab" data-tab="${k}">${l}</button>`).join('')}</div>`;
-      if (jobTab === 'chat') html += chatHTML(n);
-      else if (jobTab === 'tasks') {
-        html += `<div class="jobactions"><button class="jbtn primary" data-act="addto" data-p="${esc(n)}">＋ Add task</button></div>`;
-        html += mine.length ? mine.map(taskHTML).join('') : `<div class="empty"><div class="big">✓</div>No open tasks on this job.</div>`;
-        if (doneT.length) html += `<div class="section-title">Done (${doneT.length})</div>` + doneT.map(taskHTML).join('');
-      } else {
-        html += `<div class="section-title">Subs on this job</div>` + (getSubs(j).length ? `<div class="subchips jobsubs">${subChips(j, true)}</div>` : `<div class="hint">No subs yet. Tap Edit job to add them.</div>`);
-        const mm = jobMedia(n);
-        if (mm.length) html += `<div class="section-title">Photos, videos &amp; files (${mm.length})</div><div class="mgrid">` + mm.slice().reverse().map(a => a.kind === 'image' ? `<img class="mthumb" data-mid="${a.id}" data-k="image" alt="">` : `<button class="mthumb mtile" data-mid="${a.id}" data-name="${esc(a.name)}"><span>${a.kind === 'video' ? '🎬' : fileIcon(a.name)}</span><small>${esc(a.name.slice(0, 14))}</small></button>`).join('') + '</div>';
-        html += `<div class="section-title">Job</div><div class="infocard">
-          <div><span>Address</span><b>${esc(j.addr || 'none')}</b></div>
-          <div><span>Upsell potential</span><b>${j.upsell ? money(j.upsell) : 'not set'}</b></div>
-          <div><span>Last site check</span><b>${j.last ? agoText(j.last) + ' · ' + (j.kind === 'photos' ? 'photos' : 'on site') : 'none logged'}</b></div>
-          <div><span>Check every</span><b>${j.every || 5} days</b></div>
-          <div><span>Photos, videos &amp; files</span><b>${jobMedia(n).length}</b></div>
-          <div><span>WhatsApp group</span><b>${j.wa ? '<a href="' + esc(j.wa) + '">Open group</a>' : 'not linked'}</b></div></div>
-          <div class="jobactions">
-            <button class="jbtn primary" data-act="editjobd">✎ Edit job</button>
-            <button class="jbtn" data-act="summary">📝 Summary</button>
-            <button class="jbtn" data-act="msgteam">💬 Group &amp; quick messages</button>
-            ${j.addr ? `<button class="jbtn" data-act="navjob">🧭 Go to job</button>` : ''}
-          </div>`;
-      }
+      const n = curJob;
+      $('#h1').textContent = n; $('#sub').textContent = (jobs[n] || {}).addr || '';
+      if (jobTab === 'chat') html += (chatSearch ? `<div class="schat"><input id="sq" placeholder="Search this chat" autocomplete="off"><button data-act="searchx">Cancel</button></div>` : '') + chatHTML(n);
+      else if (jobTab === 'tasks') html += screenTasks(n);
+      else if (jobTab === 'media') html += screenMedia(n);
+      else if (jobTab === 'starred') html += screenStarred(n);
+      else html += screenInfo(n);
     } else {
       $('#h1').textContent = 'Projects';
       const names = activeProjects();
@@ -484,11 +573,17 @@
     $('#main').innerHTML = html;
     document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === (view === 'job' ? 'projects' : view)));
     const inChat = view === 'job' && jobTab === 'chat';
-    $('#composer').hidden = !inChat; $('#chatHead').hidden = !inChat; $('#fab').hidden = inChat;
+    $('#composer').hidden = !inChat; $('#chatHead').hidden = !inChat; $('#fab').hidden = view === 'job';
+    document.body.classList.toggle('injob', view === 'job');
     document.body.classList.toggle('inchat', inChat);
     document.documentElement.classList.toggle('inchat', inChat);
     if (!inChat) document.querySelector('main').style.paddingBottom = '';
-    if (inChat) { paintChatHead(); updateMain(); layoutComposer(); requestAnimationFrame(() => { layoutComposer(); window.scrollTo(0, document.body.scrollHeight); }); }
+    if (inChat) { paintChatHead(); updateMain(); layoutComposer(); requestAnimationFrame(() => {
+      layoutComposer();
+      const jt = pendingJump && document.querySelector('.bub[data-id="' + pendingJump + '"]');
+      if (jt) { jt.scrollIntoView({ block: 'center' }); jt.classList.add('flash'); setTimeout(() => jt.classList.remove('flash'), 1800); } else window.scrollTo(0, document.body.scrollHeight);
+      pendingJump = null;
+    }); }
     hydrateMedia();
     $('#projList').innerHTML = [...new Set(tasks.map(t => t.project).filter(Boolean))].map(p => `<option value="${esc(p)}">`).join('');
   }
@@ -633,10 +728,10 @@
   $('#vClose').onclick = () => { $('#viewer').hidden = true; $('#vBody').innerHTML = ''; };
   $('#vShare').onclick = () => shareFile($('#viewer').dataset.mid, $('#viewer').dataset.name);
   $('#cQuick').onclick = () => doAction('quick');
-  $('#cBack').onclick = () => { view = 'projects'; render(); window.scrollTo(0, 0); };
-  $('#cTitle').onclick = () => { jobTab = 'info'; render(); window.scrollTo(0, 0); };
-  $('#cTasks').onclick = () => { jobTab = 'tasks'; render(); window.scrollTo(0, 0); };
-  $('#cWa').onclick = () => { const w = (jobs[curJob] || {}).wa; if (w) location.href = w; };
+  $('#cBack').onclick = () => { view = 'projects'; tabHist = []; render(); window.scrollTo(0, 0); };
+  $('#cTitle').onclick = () => goTab('info');
+  $('#cTasks').onclick = () => goTab('tasks');
+  $('#cCall').onclick = () => callPeople(curJob);
   function doAction(a) {
     $('#apanel').hidden = true; layoutComposer();
     const j = jobs[curJob] || {}, ad = j.addr ? ' (' + j.addr + ')' : '';
@@ -676,14 +771,17 @@
   };
   // WhatsApp-like gestures on bubbles: double-tap = heart, long-press = delete
   const bubOf = e => e.target.closest && !e.target.closest('.mvid') && e.target.closest('.bub');
-  const findMsg = (id, k) => { const j = jobs[curJob] || {}; return (k === 'note' ? j.notes : j.chat || []).find(x => x.id === id); };
-  function pressStart(e) { const b = bubOf(e); if (!b) return; pressed = false; clearTimeout(pressTimer); pressTimer = setTimeout(() => { pressed = true; if (confirm('Delete this message?')) { const j = jobs[curJob] || {}; if (b.dataset.k === 'note') j.notes = (j.notes || []).filter(x => x.id !== b.dataset.id); else { (j.chat || []).filter(x => x.id === b.dataset.id).forEach(x => (x.attach || []).forEach(a => delFile(a.id))); j.chat = (j.chat || []).filter(x => x.id !== b.dataset.id); } saveJobs(); render(); } }, 600); }
+  function pressStart(e) { const b = bubOf(e); if (!b) return; pressed = false; clearTimeout(pressTimer); pressTimer = setTimeout(() => { pressed = true; msgMenu(b.dataset.id, b.dataset.k); }, 550); }
   const pressEnd = () => clearTimeout(pressTimer);
+  $('#main').addEventListener('input', e => {
+    if (e.target.id !== 'sq') return; const q = e.target.value.trim().toLowerCase();
+    document.querySelectorAll('.bub').forEach(b => { b.style.display = !q || b.textContent.toLowerCase().includes(q) ? '' : 'none'; });
+  });
   $('#main').addEventListener('touchstart', pressStart, { passive: true });
   $('#main').addEventListener('mousedown', pressStart);
   ['touchend', 'touchmove', 'touchcancel', 'mouseup', 'mouseleave'].forEach(ev => $('#main').addEventListener(ev, pressEnd, { passive: true }));
   $('#main').addEventListener('click', e => {
-    const m = e.target.closest('.mimg,.mfile,.mthumb');
+    const m = e.target.closest('.mimg,.mfile,.mfile2,.mthumb');
     if (m) { openViewer(m.dataset.mid, m.dataset.name || m.alt || '', m.classList.contains('mimg') || m.dataset.k === 'image' ? 'image' : /\.(mp4|mov|m4v)$/i.test(m.dataset.name || '') ? 'video' : 'file'); return; }
     if (e.target.closest('.mvid')) return;
     const b = bubOf(e); if (!b) return;
@@ -815,11 +913,7 @@
         const subs = getSubs(j);
         const send = x => location.href = smsHref(x && x.phone, `Hi${x && x.name ? ' ' + x.name : ''}, it's ${OWNER}. Can you send me photos or a quick video of the current work at ${n}${j.addr ? ' (' + j.addr + ')' : ''}? Please include anything about to get covered up. Thanks!`);
         if (subs.length <= 1) send(subs[0]);
-        else {
-          $('#pickList').innerHTML = subs.map((x, i) => `<button class="pickbtn" data-i="${i}">💬 ${esc(subLabel(x))}</button>`).join('');
-          $('#pickBg').classList.add('open');
-          $('#pickList').onclick = ev => { const b = ev.target.closest('[data-i]'); if (b) { $('#pickBg').classList.remove('open'); send(subs[+b.dataset.i]); } };
-        }
+        else openPick('Who do you want to text?', subs.map(x => ({ label: '💬 ' + subLabel(x), fn: () => send(x) })));
       } else if (act === 'navto') window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(j.addr), '_blank');
       else if (act === 'editjob') openEdit(n);
       return;
@@ -828,8 +922,19 @@
       const act = el.dataset.act;
       if (act === 'collapse') { const p = el.dataset.p; collapsed.has(p) ? collapsed.delete(p) : collapsed.add(p); return render(); }
       if (act === 'addto') return openSheet(null, el.dataset.p);
-      if (act === 'openjob') { curJob = el.dataset.p; jobTab = 'chat'; view = 'job'; render(); return; }
-      if (act === 'jtab') { jobTab = el.dataset.tab; render(); if (jobTab !== 'chat') window.scrollTo(0, 0); return; }
+      if (act === 'openjob') { curJob = el.dataset.p; jobTab = 'chat'; tabHist = []; chatSearch = false; view = 'job'; render(); return; }
+      if (act === 'jtab') return goTab(el.dataset.tab);
+      if (act === 'back') return backTab();
+      if (act === 'callall') return callPeople(curJob);
+      if (act === 'addmember') return addMemberMenu(curJob);
+      if (act === 'member') { if (e.target.closest('.mcall')) return; return memberMenu(curJob, +el.dataset.i); }
+      if (act === 'mtab') { mediaTab = el.dataset.t; return render(); }
+      if (act === 'openlink') return void window.open(el.dataset.u, '_blank');
+      if (act === 'openwa') { const w = (jobs[curJob] || {}).wa; if (w) location.href = w; return; }
+      if (act === 'togvia') { sendVia = sendVia === 'wa' ? 'sms' : 'wa'; try { localStorage.setItem('oaf-via-v1', sendVia); } catch {} render(); return toast(sendVia === 'wa' ? 'Sending via WhatsApp' : 'Sending via Messages'); }
+      if (act === 'search') { tabHist = []; jobTab = 'chat'; chatSearch = true; render(); window.scrollTo(0, 0); setTimeout(() => $('#sq').focus(), 80); return; }
+      if (act === 'searchx') { chatSearch = false; render(); return; }
+      if (act === 'jump') { pendingJump = el.dataset.id; tabHist = []; jobTab = 'chat'; render(); return; }
       if (act === 'navjob') return void window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent((jobs[curJob] || {}).addr || ''), '_blank');
       if (act === 'addto') return openSheet(null, el.dataset.p);
       if (act === 'openjob') { curJob = el.dataset.p; jobTab = 'chat'; view = 'job'; render(); return; }
