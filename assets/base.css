@@ -150,3 +150,13 @@ nav button{position:relative}
 .nmeta button{border:0;background:none;font-size:22px;line-height:1;color:var(--muted);padding:0 4px}
 .ntext{margin-top:4px;white-space:pre-wrap;word-break:break-word;font-size:15px}
 .sumtext{white-space:pre-wrap;word-break:break-word;font:14px/1.5 ui-monospace,Menlo,Consolas,monospace;background:var(--bg);border:var(--border) solid var(--line);border-radius:var(--radius-sm);padding:12px;margin:8px 0 0;max-height:55vh;overflow:auto;user-select:text;-webkit-user-select:text}
+
+.msgtext{min-height:110px;margin-top:8px}
+.rgroup{font-size:12px;font-weight:700;color:var(--muted);margin:12px 0 4px}
+.rcpt{display:flex;align-items:center;gap:12px;padding:10px 12px;margin:6px 0;border:var(--border) solid var(--line);border-radius:var(--radius-sm);background:var(--bg);text-transform:none;letter-spacing:0;font-size:15px;font-weight:400;color:var(--text)}
+.rcpt input{width:22px;height:22px;flex:none;padding:0;accent-color:var(--accent)}
+.rcpt span{display:flex;flex-direction:column;min-width:0}.rcpt small{font-size:12.5px;color:var(--muted)}
+.rcpt.nophone{opacity:.55}
+.rtools{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
+.rtools button{border:var(--border) solid var(--line);background:var(--bg);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600}
+.actions.wrap{flex-wrap:wrap}.actions.wrap .btn.primary{flex:1 0 100%;order:-1}

@@ -251,6 +251,7 @@
       if (getSubs(j).length) html += `<div class="subchips jobsubs">${subChips(j, true)}</div>`;
       html += `<div class="jobactions">
         <button class="jbtn primary" data-act="addto" data-p="${esc(n)}">＋ Add task</button>
+        <button class="jbtn" data-act="msgteam">💬 Message team</button>
         <button class="jbtn" data-act="summary">📝 Summary</button>
         <button class="jbtn" data-act="editjobd">✎ Edit job</button>
         <button class="jbtn" data-act="upsell" data-p="${esc(n)}">${j.upsell ? money(j.upsell) + ' upsell' : '+ Upsell $'}</button>
@@ -287,6 +288,7 @@
       html += `<div class="tools">
         <button id="exportBtn">⬇ Back up</button>
         <button id="importBtn">⬆ Restore</button>
+        <button id="teamBtn">👥 My team</button>
         <button id="clearDone">🧹 Clear completed</button>
         <input type="file" id="importFile" accept="application/json" hidden>
       </div><div class="hint">Your tasks are stored on this phone only. Back up now and then.</div>`;
@@ -346,6 +348,79 @@
     else tasks.push({ id: uid(), done: false, ...data });
     save(); closeSheet(); render();
   }
+
+  // ---- team contacts + group text (opens your Messages app) ----
+  const TEAM_KEY = 'oaf-team-v1';
+  let team = [];
+  try { team = JSON.parse(localStorage.getItem(TEAM_KEY)) || []; } catch { team = []; }
+  const saveTeam = () => { try { localStorage.setItem(TEAM_KEY, JSON.stringify(team)); } catch {} };
+  const cleanPhone = p => String(p || '').replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '');
+  const hasPhone = p => cleanPhone(p).replace(/\D/g, '').length >= 10;
+  let teamFromMsg = false, msgJob = '', msgList = [];
+
+  function addTeamRow(x = {}) {
+    const d = document.createElement('div'); d.className = 'subrow';
+    d.innerHTML = `<input class="s-name" placeholder="Name" autocomplete="off" value="${esc(x.name || '')}">
+      <input class="s-trade" list="roleList" placeholder="Role" autocomplete="off" value="${esc(x.role || '')}">
+      <input class="s-phone" type="tel" inputmode="tel" placeholder="Phone" value="${esc(x.phone || '')}">
+      <button type="button" class="s-del" aria-label="Remove person">×</button>`;
+    $('#teamRows').appendChild(d);
+  }
+  function openTeam() {
+    $('#teamRows').innerHTML = ''; (team.length ? team : [{ role: 'Partner' }, { role: 'Partner' }, { role: 'Sales rep' }]).forEach(addTeamRow);
+    $('#teamBg').classList.add('open');
+  }
+  function closeTeam() { $('#teamBg').classList.remove('open'); if (teamFromMsg) { teamFromMsg = false; openMsg(msgJob); } }
+  $('#addTeam').onclick = () => addTeamRow({ role: 'Sales rep' });
+  $('#teamRows').onclick = e => { if (e.target.classList.contains('s-del')) e.target.closest('.subrow').remove(); };
+  $('#tCancel').onclick = closeTeam;
+  $('#teamBg').onclick = e => { if (e.target.id === 'teamBg') closeTeam(); };
+  $('#tSave').onclick = () => {
+    team = [...document.querySelectorAll('#teamRows .subrow')].map(r => ({ id: uid(), name: r.querySelector('.s-name').value.trim(), role: r.querySelector('.s-trade').value.trim(), phone: r.querySelector('.s-phone').value.trim() })).filter(x => x.name);
+    saveTeam(); closeTeam(); toast(`${team.length} ${team.length === 1 ? 'person' : 'people'} saved`);
+  };
+
+  const TEMPLATES = [
+    ['📷 Photos', (n, a) => `Hi team, it's ${OWNER}. Can you send photos or a quick video of the current work at ${n}${a}? Please include anything about to get covered up. Thanks!`],
+    ['📅 Schedule', (n, a) => `Hi team, quick schedule update for ${n}${a}: `],
+    ['⏰ I\'ll be there', (n, a) => `Hi team, I'll be at ${n}${a} tomorrow at 8:00 AM. Please make sure someone is on site. Thanks!`],
+    ['⚠️ Problem', (n, a) => `Heads up on ${n}${a}: there's an issue. `],
+    ['✏️ Custom', () => ''],
+  ];
+  function paintRecips() {
+    const grp = (title, arr) => arr.length ? `<div class="rgroup">${title}</div>` + arr.map(r => `<label class="rcpt ${r.phone ? '' : 'nophone'}"><input type="checkbox" data-k="${r.key}" ${r.checked ? 'checked' : ''} ${r.phone ? '' : 'disabled'}><span><span class="rn"><b>${esc(r.name)}</b>${r.role ? ' · ' + esc(r.role) : ''}</span><small>${r.phone ? esc(r.phone) : 'no phone number'}</small></span></label>`).join('') : '';
+    $('#rcptList').innerHTML = grp('Subs on this job', msgList.filter(r => r.kind === 'sub')) + grp('Your team', msgList.filter(r => r.kind === 'team')) ||
+      '<div class="hint">No contacts yet. Add subs to the job and your team below.</div>';
+  }
+  function openMsg(n) {
+    msgJob = n; const j = jobs[n] || {};
+    msgList = [
+      ...getSubs(j).map((x, i) => ({ key: 's' + i, kind: 'sub', name: x.name, role: x.trade, phone: hasPhone(x.phone) ? x.phone : '', checked: hasPhone(x.phone) })),
+      ...team.map((x, i) => ({ key: 't' + i, kind: 'team', name: x.name, role: x.role, phone: hasPhone(x.phone) ? x.phone : '', checked: false })),
+    ];
+    $('#msgTitle').textContent = 'Message team · ' + n;
+    $('#tplChips').innerHTML = TEMPLATES.map((t, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-t="${i}">${t[0]}</button>`).join('');
+    $('#m-text').value = TEMPLATES[0][1](n, j.addr ? ' (' + j.addr + ')' : '');
+    paintRecips(); $('#msgBg').classList.add('open');
+  }
+  $('#tplChips').onclick = e => {
+    const c = e.target.closest('[data-t]'); if (!c) return;
+    document.querySelectorAll('#tplChips .chip').forEach(x => x.classList.toggle('on', x === c));
+    const j = jobs[msgJob] || {}; $('#m-text').value = TEMPLATES[+c.dataset.t][1](msgJob, j.addr ? ' (' + j.addr + ')' : '');
+    $('#m-text').focus();
+  };
+  $('#rcptList').onchange = e => { const r = msgList.find(x => x.key === e.target.dataset.k); if (r) r.checked = e.target.checked; };
+  $('#mAll').onclick = () => { msgList.forEach(r => { if (r.phone) r.checked = true; }); paintRecips(); };
+  $('#mNone').onclick = () => { msgList.forEach(r => r.checked = false); paintRecips(); };
+  $('#mTeam').onclick = () => { teamFromMsg = true; $('#msgBg').classList.remove('open'); openTeam(); };
+  $('#mCancel').onclick = () => $('#msgBg').classList.remove('open');
+  $('#msgBg').onclick = e => { if (e.target.id === 'msgBg') $('#msgBg').classList.remove('open'); };
+  $('#mCopy').onclick = async () => { try { await navigator.clipboard.writeText($('#m-text').value); toast('Message copied'); } catch { toast('Could not copy'); } };
+  $('#mSend').onclick = () => {
+    const nums = msgList.filter(r => r.checked && r.phone).map(r => cleanPhone(r.phone));
+    if (!nums.length) { toast('Pick at least one person'); return; }
+    location.href = `sms:${nums.join(',')}${/iPhone|iPad|Mac/.test(navigator.userAgent) ? '&' : '?'}body=${encodeURIComponent($('#m-text').value)}`;
+  };
 
   // ---- new job sold: creates the whole first-48-hours playbook ----
   function setKick(v) {
@@ -480,6 +555,7 @@
       if (act === 'addto') return openSheet(null, el.dataset.p);
       if (act === 'openjob') { curJob = el.dataset.p; view = 'job'; render(); window.scrollTo(0, 0); return; }
       if (act === 'editjobd') return openEdit(curJob);
+      if (act === 'msgteam') return openMsg(curJob);
       if (act === 'summary') return showText('Summary', jobSummary(curJob));
       if (act === 'evcopy') return showText('Evening review', eveningSummary());
       if (act === 'setrem') return downloadReminder(remTime);
@@ -515,9 +591,10 @@
     const id = e.target.id;
     if (id === 'exportBtn') {
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([JSON.stringify({ tasks, jobs }, null, 2)], { type: 'application/json' }));
+      a.href = URL.createObjectURL(new Blob([JSON.stringify({ tasks, jobs, team }, null, 2)], { type: 'application/json' }));
       a.download = `tasks-backup-${todayISO()}.json`; a.click();
     } else if (id === 'importBtn') $('#importFile').click();
+    else if (id === 'teamBtn') openTeam();
     else if (id === 'clearDone' && confirm('Remove all completed tasks?')) { tasks = tasks.filter(t => !t.done); save(); render(); }
   };
   $('#main').addEventListener('change', e => {
@@ -530,6 +607,7 @@
         if (confirm(`Replace current tasks with ${d.length} from the backup?`)) {
           tasks = d; save();
           if (!Array.isArray(raw) && raw.jobs) { jobs = raw.jobs; saveJobs(); }
+          if (!Array.isArray(raw) && raw.team) { team = raw.team; saveTeam(); }
           render();
         }
       } catch { alert('That file is not a valid backup.'); }

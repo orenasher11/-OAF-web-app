@@ -138,6 +138,38 @@
     </div>
   </div>
 </div>
+<datalist id="roleList"><option value="Partner"><option value="Sales rep"><option value="Owner"><option value="Project manager"></datalist>
+<div class="sheet-bg" id="teamBg">
+  <div class="sheet" role="dialog">
+    <div class="grab"></div>
+    <h2>My team</h2>
+    <p class="help">Your partners and sales reps. Add them once, then pick them when you message a job.</p>
+    <div id="teamRows"></div>
+    <button type="button" class="chip addsub" id="addTeam">＋ Add person</button>
+    <div class="actions">
+      <button class="btn ghost" id="tCancel">Cancel</button>
+      <button class="btn primary" id="tSave">Save</button>
+    </div>
+  </div>
+</div>
+<div class="sheet-bg" id="msgBg">
+  <div class="sheet" role="dialog">
+    <div class="grab"></div>
+    <h2 id="msgTitle">Message team</h2>
+    <label>Message</label>
+    <div class="chips" id="tplChips"></div>
+    <textarea id="m-text" class="msgtext"></textarea>
+    <label>Send to</label>
+    <div class="rtools"><button type="button" id="mAll">Select all</button><button type="button" id="mNone">Clear</button><button type="button" id="mTeam">👥 Edit team</button></div>
+    <div id="rcptList"></div>
+    <div class="actions wrap">
+      <button class="btn ghost" id="mCancel">Cancel</button>
+      <button class="btn ghost" id="mCopy">Copy</button>
+      <button class="btn primary" id="mSend">Open in Messages</button>
+    </div>
+    <div class="hint">This opens your Messages app with everyone and the text filled in. You tap send.</div>
+  </div>
+</div>
 <script src="assets/app.js"></script>
 </body>
 </html>
