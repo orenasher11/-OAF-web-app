@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '24';
+  const APP_VERSION = '25';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -54,7 +54,10 @@
   }
   const agoText = d => { const n = daysBetween(d, todayISO()); return n <= 0 ? 'Today' : n === 1 ? 'Yesterday' : n + ' days ago'; };
   const nextText = v => v.diff === null ? 'No visit logged yet' : v.diff < 0 ? `Overdue ${-v.diff}d` : v.diff === 0 ? 'Due today' : v.diff === 1 ? 'Due tomorrow' : `Due in ${v.diff} days`;
-  const activeProjects = () => [...new Set(tasks.filter(t => !t.done && t.project).map(t => t.project))];
+  // every job counts as active until you mark it complete (jobs with no tasks yet, like ones you import, are included)
+  const isArchived = n => !!(jobs[n] && jobs[n].archived);
+  const activeProjects = () => [...new Set([...Object.keys(jobs).filter(k => jobs[k] && !jobs[k].archived), ...tasks.filter(t => !t.done && t.project).map(t => t.project)])].filter(n => !isArchived(n));
+  let showDoneJobs = false;
   function visitList() {
     const order = { late: 0, soon: 1, ok: 2 };
     return activeProjects().map(n => ({ n, ...visitInfo(n) }))
@@ -701,6 +704,7 @@
         ${srow('💰', 'Upsell potential', j.upsell ? money(j.upsell) : 'Set', 'upsell', `data-p="${esc(n)}"`)}
         ${srow('🚗', 'Site check every', (j.every || 5) + ' days', 'editjobd')}
         ${srow('🕒', 'Last site check', j.last ? agoText(j.last) : 'none', 'editjobd')}
+        ${srow(j.archived ? '↩️' : '✅', j.archived ? 'Reopen this job' : 'Mark job complete', '', 'archive')}
         ${srow('🔗', 'WhatsApp group link', j.wa ? 'Open' : 'Add', j.wa ? 'openwa' : 'editjobd')}
         ${srow('📤', 'Send chat messages via', sendVia === 'wa' ? 'WhatsApp' : 'Messages', 'togvia')}</div>`;
   }
@@ -905,13 +909,11 @@
       names.forEach(n => (sections[cityOf(n) || 'No address yet'] ||= []).push(n));
       const secNames = Object.keys(sections).sort((a, b) => a === 'No address yet' ? 1 : b === 'No address yet' ? -1 : a.localeCompare(b));
       if (!names.length) html = `<div class="empty"><div class="big">📁</div>No jobs yet. Tap New job sold to add one.</div>`;
-      secNames.forEach(city => {
-        html += `<div class="section-title">${esc(city)}</div>`;
-        sections[city].sort((a, b) => (jobs[a]?.addr || a).localeCompare(jobs[b]?.addr || b)).forEach(n => {
-          const j = jobs[n] || {}, mine = open.filter(t => t.project === n);
-          const late = mine.filter(t => t.due && t.due < t0).length, nxt = mine[0];
-          html += `<button class="folder ${late ? 'hasLate' : ''}" data-act="openjob" data-p="${esc(n)}">
-            <span class="ficon">📁</span>
+      const folder = n => {
+        const j = jobs[n] || {}, mine = open.filter(t => t.project === n);
+        const late = mine.filter(t => t.due && t.due < t0).length, nxt = mine[0];
+        return `<button class="folder ${late ? 'hasLate' : ''}" data-act="openjob" data-p="${esc(n)}">
+            <span class="ficon">${j.archived ? '✅' : '📁'}</span>
             <span class="fbody">
               <span class="faddr ${j.addr ? '' : 'none'}">${esc(j.addr || 'No address yet')}</span>
               <span class="fclient">${esc(n)}</span>
@@ -920,8 +922,13 @@
             </span>
             <span class="fright">${j.upsell ? `<span class="pup set">${money(j.upsell)}</span>` : ''}<i>›</i></span>
           </button>`;
-        });
+      };
+      secNames.forEach(city => {
+        html += `<div class="section-title">${esc(city)}</div>`;
+        sections[city].sort((a, b) => (jobs[a]?.addr || a).localeCompare(jobs[b]?.addr || b)).forEach(n => { html += folder(n); });
       });
+      const doneJobs = Object.keys(jobs).filter(k => jobs[k] && jobs[k].archived).sort();
+      if (doneJobs.length) html += `<button class="older" data-act="showdone">${showDoneJobs ? 'Hide' : 'Show'} completed jobs (${doneJobs.length})</button>` + (showDoneJobs ? doneJobs.map(folder).join('') : '');
       html = `<button class="jbtn wide oldbtn" data-act="oldjob">📥 Add a job that's already in progress</button>` + html;
     }
     $('#stats').innerHTML = stats; $('#stats').hidden = !stats;
@@ -1348,6 +1355,8 @@
       if (act === 'openjob') { curJob = el.dataset.p; jobTab = 'chat'; tabHist = []; chatSearch = false; chatLimit = 300; view = 'job'; render(); return; }
       if (act === 'go') { view = el.dataset.v; filter = 'all'; render(); window.scrollTo(0, 0); return; }
       if (act === 'oldjob') return openJob('old');
+      if (act === 'showdone') { showDoneJobs = !showDoneJobs; return render(); }
+      if (act === 'archive') { const j = jobs[curJob] = jobs[curJob] || {}; j.archived = !j.archived; saveJobs(); view = 'projects'; render(); window.scrollTo(0, 0); return toast(j.archived ? 'Job marked complete' : 'Job reopened'); }
       if (act === 'lnew') return openLead();
       if (act === 'lfilter') { leadF = el.dataset.t; return render(); }
       if (act === 'lcall' || act === 'ltext' || act === 'lgo' || act === 'lsnz' || act === 'lstage' || act === 'ledit') {
