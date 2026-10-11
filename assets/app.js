@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '35';
+  const APP_VERSION = '36';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -994,15 +994,24 @@
         ${srow('🔗', 'WhatsApp group link', j.wa ? 'Open' : 'Add', j.wa ? 'openwa' : 'editjobd')}
         ${srow('📤', 'Send chat messages via', sendVia === 'wa' ? 'WhatsApp' : 'Messages', 'togvia')}</div>`;
   }
+  let showDoneT = false;
   function screenTasks(n) {
     const all = tasks.filter(t => t.project === n), chk = all.filter(t => t.ord !== undefined).sort((a, b) => a.ord - b.ord);
     const todo = all.filter(t => !t.done && t.ord === undefined).sort(cmp), doneT = all.filter(t => t.done && t.ord === undefined);
-    const dn = chk.filter(t => t.done).length;
-    return sbar(0, 'To-do &amp; checklists', `<button class="spill primary" data-act="addto" data-p="${esc(n)}">＋ Task</button>`) +
-      (!chk.length ? `<div class="roombox dim kickcard"><div class="rtop"><span>📋 No checklist on this job yet</span></div><div class="rsub">Add the standard kickoff checklist: coffee + donuts, site photos, DocuSign, sub walkthrough, upsell discovery, plus follow-ups.</div><button class="jbtn primary wide" data-act="addkick">Add the kickoff checklist</button></div>` : '') +
-      (chk.length ? `<div class="ssec">Kickoff checklist · ${dn} of ${chk.length}</div><div class="prog"><i style="width:${Math.round(dn / chk.length * 100)}%"></i></div>` + chk.map(taskHTML).join('') : '') +
-      `<div class="ssec">To-do · ${todo.length} open</div>` + (todo.length ? todo.map(taskHTML).join('') : `<div class="empty small">No open to-dos. Tap ＋ Task to add one.</div>`) +
-      (doneT.length ? `<div class="ssec">Done · ${doneT.length}</div>` + doneT.map(taskHTML).join('') : '');
+    const dn = chk.filter(t => t.done).length, next = chk.find(t => !t.done), O = { hide: true };
+    let h = sbar(0, 'To-do &amp; checklists', `<button class="spill primary" data-act="addto" data-p="${esc(n)}">＋ Task</button>`);
+    if (!chk.length) h += `<div class="roombox dim kickcard"><div class="rtop"><span>📋 No checklist on this job yet</span></div><div class="rsub">Add the standard kickoff checklist: coffee + donuts, site photos, DocuSign, sub walkthrough, upsell discovery, plus follow-ups.</div><button class="jbtn primary wide" data-act="addkick">Add the kickoff checklist</button></div>`;
+    else {
+      const pc = Math.round(dn / chk.length * 100);
+      h += `<div class="chkhead"><div class="ring" style="--p:${pc}"><b>${dn}/${chk.length}</b></div><div class="chkt"><b>Kickoff checklist</b><small>${dn === chk.length ? '🎉 All done. Nice work!' : dn ? `${chk.length - dn} steps to go` : 'Let’s get this job started'}</small></div></div>`;
+      if (next) h += `<div class="task nextcard" data-id="${next.id}"><div class="nlabel">NEXT STEP</div><div class="ntitle" data-act="edit">${catOf(next.cat) ? catOf(next.cat).icon + ' ' : ''}${esc(next.title)}</div><div class="nwhen">${next.due ? fmtDate(next.due) + (next.time ? ' · ' + fmtTime(next.time) : '') : ''}</div><button class="ndone" data-act="toggle">✓ Mark done</button></div>`;
+      const days = []; chk.forEach(t => { const k = (t.due || '') + '|' + (t.time || ''); let g = days.find(x => x.k === k); if (!g) days.push(g = { k, due: t.due, time: t.time, items: [] }); g.items.push(t); });
+      days.forEach(g => { const d = g.items.filter(t => t.done).length;
+        h += `<div class="dayh"><span>${g.time ? '☀️ ' : ''}${g.due ? fmtDate(g.due) : 'No date'}${g.time ? ' · ' + fmtTime(g.time) : ''}</span><em>${d}/${g.items.length}</em></div>` + g.items.map(t => taskHTML(t, { hide: true, nodate: true })).join(''); });
+    }
+    h += `<div class="ssec">To-do · ${todo.length} open</div>` + (todo.length ? todo.map(t => taskHTML(t, O)).join('') : `<div class="empty small">Nothing on your list. Tap ＋ Task to add one.</div>`);
+    if (doneT.length) h += `<button class="older" data-act="showdonet">${showDoneT ? 'Hide' : 'Show'} ${doneT.length} finished ${doneT.length === 1 ? 'task' : 'tasks'}</button>` + (showDoneT ? doneT.map(t => taskHTML(t, O)).join('') : '');
+    return h;
   }
   function screenMedia(n) {
     const mm = jobMedia(n).slice().reverse(), photos = mm.filter(a => a.kind !== 'file'), docs = mm.filter(a => a.kind === 'file'), links = linksOf(n).slice().reverse();
@@ -1041,25 +1050,31 @@
   }
   const cmp = (a, b) => (a.due || '9999').localeCompare(b.due || '9999') || (b.star ? 1 : 0) - (a.star ? 1 : 0) || (a.ord ?? 99) - (b.ord ?? 99) || a.title.localeCompare(b.title);
 
-  function taskHTML(t) {
-    const t0 = todayISO(), c = catOf(t.cat);
+  // compact, calm task rows: one line of title, a small date, and a single ⋯ menu for the extras
+  function taskHTML(t, opts) {
+    const t0 = todayISO(), c = catOf(t.cat), o = (opts && typeof opts === 'object') ? opts : {};
     const dcls = !t.done && t.due ? (t.due < t0 ? 'late' : t.due === t0 ? 'today' : '') : '';
+    const when = t.due ? fmtDate(t.due) + (t.time ? ' · ' + fmtTime(t.time) : '') : 'No date';
     return `<div class="task ${t.done ? 'done' : ''} ${t.star ? 'starred' : ''}" data-id="${t.id}">
       <button class="check" data-act="toggle" aria-label="Mark done">${t.done ? '✓' : ''}</button>
       <div class="body" data-act="edit">
-        <div class="title">${esc(t.title)}</div>
-        <div class="meta">
-          ${c ? `<span class="tag">${c.icon} ${c.label}</span>` : ''}
-          ${t.project ? `<span class="proj">${esc(t.project)}</span>` : ''}
-          <span class="date ${dcls}">${fmtDate(t.due)}${t.time ? ' · ' + fmtTime(t.time) : ''}</span>
-        </div>
+        <div class="title">${t.star && !t.done ? '<i class="tst">★</i> ' : ''}${c ? `<span class="tic">${c.icon}</span> ` : ''}${esc(t.title)}</div>
+        <div class="meta">${t.project && !o.hide ? `<span class="proj">${esc(t.project)}</span>` : ''}${o.nodate ? '' : `<span class="date ${dcls}">${when}</span>`}</div>
         ${t.notes ? `<div class="notes">${esc(t.notes)}</div>` : ''}
       </div>
-      ${t.done ? '' : `<div class="quick">
-        <button class="qbtn star" data-act="star" aria-label="Priority">${t.star ? '★' : '☆'}</button>
-        <button class="qbtn" data-act="snooze" aria-label="Push to tomorrow">+1d</button>
-      </div>`}
+      ${t.done ? '' : `<button class="tmore" data-act="tmenu" aria-label="More">⋯</button>`}
     </div>`;
+  }
+  function taskMenu(id) {
+    const t = tasks.find(x => x.id === id); if (!t) return;
+    const base = t.due && t.due > todayISO() ? t.due : todayISO();
+    openPick(t.title.length > 40 ? t.title.slice(0, 38) + '…' : t.title, [
+      { label: t.star ? '☆ Remove priority' : '⭐ Mark as priority', fn: () => { t.star = !t.star; save(); render(); } },
+      { label: '⏰ Move to tomorrow', fn: () => { const prev = t.due; t.due = addDays(1, base === todayISO() ? todayISO() : base); save(); render(); toast('Moved to ' + fmtDate(t.due), () => { t.due = prev; save(); render(); }); } },
+      { label: '📅 Move to next week', fn: () => { t.due = addDays(7); save(); render(); toast('Moved to ' + fmtDate(t.due)); } },
+      { label: '✎ Edit', fn: () => openSheet(t.id) },
+      { label: '🗑 Delete task', danger: true, fn: () => { tasks = tasks.filter(x => x.id !== t.id); save(); render(); toast('Task deleted'); } },
+    ]);
   }
 
   function render() {
@@ -1688,6 +1703,8 @@
       if (act === 'openjob') { curJob = el.dataset.p; jobTab = 'chat'; tabHist = []; chatSearch = false; chatLimit = 300; view = 'job'; render(); return; }
       if (act === 'go') { view = el.dataset.v; filter = 'all'; render(); window.scrollTo(0, 0); return; }
       if (act === 'addkick') return openPick('Add the kickoff checklist', [{ label: 'Start today', fn: () => addKickoff(curJob, 0) }, { label: 'Start tomorrow at 8:00 AM', fn: () => addKickoff(curJob, 1) }, { label: 'Start in 2 days', fn: () => addKickoff(curJob, 2) }]);
+      if (act === 'showdonet') { showDoneT = !showDoneT; return render(); }
+      if (act === 'tmenu') return taskMenu(el.closest('.task').dataset.id);
       if (act === 'tscope') { todayScope = el.dataset.t; filter = 'all'; return render(); }
       if (act === 'oldjob') return openJob('old');
       if (act === 'showdone') { showDoneJobs = !showDoneJobs; return render(); }

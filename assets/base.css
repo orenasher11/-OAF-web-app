@@ -436,3 +436,32 @@ body.inchat main{padding-top:calc(122px + env(safe-area-inset-top))}
 .vbar{background:#0b0d12;position:relative;z-index:2}
 
 .seg.scope{margin:14px 0 4px}.sname{font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)}
+
+/* ===== calm task rows ===== */
+.task{display:flex;gap:12px;align-items:center;background:#fff;border:0;border-radius:0;margin:0;padding:12px 14px;border-bottom:1px solid #edf0f5;box-shadow:none}
+.task.starred{border-left:0}
+.task:has(+ .task){border-bottom:1px solid #edf0f5}
+:not(.task) + .task{border-top-left-radius:16px;border-top-right-radius:16px}
+.task:not(:has(+ .task)){border-bottom:0;border-bottom-left-radius:16px;border-bottom-right-radius:16px;margin-bottom:10px}
+.task .check{width:28px;height:28px;border:2px solid #b8c2d3;flex:none}
+.task.done .check{animation:pop .25s}
+.task .body{flex:1;min-width:0}
+.task .title{font-size:16px;font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.task .title .tic{font-size:14px}.task .title .tst{font-style:normal;color:#f59e0b}
+.task .meta{margin-top:2px;font-size:12.5px;gap:2px 8px}
+.task .meta .date{color:var(--muted)}.task .meta .date.late{color:var(--danger)}.task .meta .date.today{color:#d9780a}
+.task.done .title{color:#9aa6b8}
+.tmore{flex:none;width:38px;height:38px;border-radius:50%;border:0;background:none;font-size:22px;line-height:1;color:#8a97ab;letter-spacing:1px}
+.tmore:active{background:#eef2f8}
+.section-title{margin:20px 4px 8px}
+/* next-step card + checklist header */
+.chkhead{display:flex;align-items:center;gap:14px;margin:6px 2px 12px}
+.ring{--p:0;flex:none;width:58px;height:58px;border-radius:50%;background:conic-gradient(var(--accent) calc(var(--p) * 1%),#dde4ef 0);display:grid;place-items:center;position:relative}
+.ring::before{content:'';position:absolute;inset:6px;background:var(--bg);border-radius:50%}.ring b{position:relative;font-size:14px}
+.chkt{display:flex;flex-direction:column}.chkt b{font-size:19px;font-family:var(--font-head)}.chkt small{color:var(--muted);font-size:13.5px}
+.task.nextcard{display:block;background:linear-gradient(160deg,#0f2747,#17406f);color:#fff;border-radius:20px;padding:16px;margin:0 0 12px;border:0;box-shadow:0 6px 18px rgba(15,39,71,.25)}
+.nextcard .nlabel{font-size:11.5px;letter-spacing:.12em;font-weight:800;color:#ff9a5c}
+.nextcard .ntitle{font-size:19px;font-weight:700;line-height:1.25;margin:4px 0 2px}
+.nextcard .nwhen{font-size:13px;color:#b9c9e0}
+.nextcard .ndone{margin-top:12px;width:100%;border:0;border-radius:14px;background:var(--accent);color:#fff;font-weight:800;font-size:16px;padding:13px}
+.dayh{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:16px 6px 6px}.dayh em{font-style:normal;color:#8a97ab}
