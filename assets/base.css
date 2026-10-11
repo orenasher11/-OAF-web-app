@@ -369,3 +369,9 @@ body.inchat main{padding:calc(76px + env(safe-area-inset-top)) 10px 90px}
 
 .fintag{background:#e8eef8;color:#0f2747;border-radius:999px;padding:1px 8px;font-weight:700;font-size:12px}
 .mav.sq{border-radius:12px;font-size:20px}
+
+.fbar{display:block;height:6px;background:#e3e9f3;border-radius:3px;margin-top:6px;overflow:hidden}.fbar i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.roombox{margin:6px 12px 12px;background:#fff6e8;border:1px solid #ffd9a8;border-radius:14px;padding:12px 14px}
+.roombox .rtop{display:flex;justify-content:space-between;align-items:baseline;font-weight:800}.roombox .rtop b{font-size:24px;color:#b54708}
+.roombox .rsub{font-size:13.5px;color:#6b4a1e;margin-top:3px}.roombox.dim{background:#f2f5fa;border-color:#e1e7f0}.roombox.dim .rsub{color:var(--muted)}
+.bigcard.soft{background:linear-gradient(160deg,#b54708,#e07a1f)}

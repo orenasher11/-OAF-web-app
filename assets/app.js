@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '26';
+  const APP_VERSION = '27';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -33,6 +33,16 @@
   const finList = () => (cfg.finance && cfg.finance.length ? cfg.finance : FIN_DEFAULT);
   const finOptions = sel => ['<option value="">Not set</option>', ...[...new Set([...finList(), ...(sel && !finList().includes(sel) ? [sel] : [])])].map(f => `<option ${f === sel ? 'selected' : ''}>${esc(f)}</option>`)].join('');
   const finStatusOptions = sel => ['<option value="">No status</option>', ...FIN_STATUS.map(f => `<option ${f === sel ? 'selected' : ''}>${esc(f)}</option>`)].join('');
+  // a job can use several finance companies, each with an amount used and a max approval
+  const getFins = j => (j && j.fins) ? j.fins : (j && j.finance ? [{ id: 'legacy', company: j.finance, status: j.finStatus || '', amount: 0, approved: 0 }] : []);
+  function finSummary(j) {
+    j = j || {}; const fins = getFins(j), fin2 = fins.filter(f => f.company !== 'Cash');
+    const approved = fin2.reduce((a, f) => a + (f.approved || 0), 0), amounts = fins.reduce((a, f) => a + (f.amount || 0), 0);
+    const ups = j.upsells || [], wonUp = ups.filter(u => u.status === 'won').reduce((a, u) => a + u.amount, 0), offered = ups.filter(u => u.status === 'offered').reduce((a, u) => a + u.amount, 0);
+    const used = approved ? Math.max(amounts, (j.contract || 0) + wonUp) : amounts, room = approved ? Math.max(0, approved - used) : 0;
+    return { fins, approved, amounts, used, room, offered, wonUp, toPitch: Math.max(0, room - offered) };
+  }
+  const finTag = j => { const f = getFins(j); if (!f.length) return ''; const sm = finSummary(j); return f.map(x => x.company).join(' + ') + (f.length === 1 && f[0].status ? ' · ' + f[0].status : '') + (sm.room ? ' · ' + money(sm.room) + ' room' : ''); };
   const saveCfg = () => { try { localStorage.setItem('oaf-cfg-v1', JSON.stringify(cfg)); } catch {} changed(); };
   let leads = [], reports = [], moneyPer = 'month';
   try { leads = JSON.parse(localStorage.getItem('oaf-leads-v1')) || []; } catch {}
@@ -83,7 +93,7 @@
     const L = [`${n}${j.addr ? ' - ' + j.addr : ''}`];
     if (subs.length) L.push('Subs: ' + subs.map(subLabel).join(', '));
     if (j.upsell) L.push('Upsell potential: ' + money(j.upsell));
-    if (j.finance) L.push('Financing: ' + j.finance + (j.finStatus ? ' · ' + j.finStatus : ''));
+    { const sm = finSummary(j); sm.fins.forEach(f => L.push('Financing: ' + f.company + (f.status ? ' · ' + f.status : '') + (f.amount ? ' · ' + money0(f.amount) : '') + (f.approved ? ' of ' + money0(f.approved) + ' approved' : ''))); if (sm.room) L.push('Room to upsell: ' + money0(sm.room) + (sm.offered ? ' (' + money0(sm.offered) + ' offered)' : '')); }
     L.push('', late.length ? `⚠ ${late.length} overdue ${late.length === 1 ? 'task' : 'tasks'}` : '✓ Nothing overdue');
     L.push('Site check: ' + (j.last ? `last ${j.kind === 'photos' ? 'photos' : 'on-site visit'} ${agoText(j.last).toLowerCase()}` : 'none logged') + ` (${nextText(v).toLowerCase()})`);
     L.push('', `Open tasks (${mine.length}):`);
@@ -510,7 +520,15 @@
         <div class="prog"><i style="width:${pct}%"></i></div>
         <div class="gnote">At this pace you finish the year at <b>${money0(pace)}</b>${cfg.goal && pace < cfg.goal ? ` (${money0(cfg.goal - pace)} short)` : cfg.goal ? ' 🎉' : ''}</div>
         <button class="spill" data-act="cfgedit">⚙ Rates &amp; goal</button></div>
-      ${(() => { const fm = {}; Object.values(jobs).forEach(j => { if (j && j.contract && inR(j.soldOn, range)) { const k = j.finance || 'Not set'; (fm[k] ||= { n: 0, v: 0 }); fm[k].n++; fm[k].v += j.contract; } });
+      ${(() => {
+        const act = Object.entries(jobs).filter(([, j]) => j && !j.archived).map(([n, j]) => [n, j, finSummary(j)]).filter(x => x[2].room > 0).sort((a, b) => b[2].room - a[2].room);
+        const tot = act.reduce((a, x) => a + x[2].room, 0), off = act.reduce((a, x) => a + Math.min(x[2].offered, x[2].room), 0);
+        return act.length ? `<div class="ssec">Max it out</div><div class="bigcard soft"><div class="bl">Approved financing still unused</div><div class="bn">${money0(tot)}</div><div class="bs">across ${act.length} ${act.length === 1 ? 'job' : 'jobs'} · ${money0(off)} already offered as upsells · ${money0(Math.max(0, tot - off))} left to pitch</div></div>
+          <div class="scard">${act.slice(0, 12).map(([n, j, sm]) => `<button class="srow" data-act="openjob" data-p="${esc(n)}"><span class="sico">💡</span><span class="slbl"><b>${esc(j.addr || n)}</b><small>${esc(n)} · approved ${money0(sm.approved)} · used ${money0(sm.used)}${sm.offered ? ' · ' + money0(sm.offered) + ' offered' : ''}</small></span><span class="sval"><b>${money0(sm.room)}</b></span><span class="schev">›</span></button>`).join('')}</div>` : '';
+      })()}
+      ${(() => { const fm = {}; Object.values(jobs).forEach(j => { if (!(j && j.contract && inR(j.soldOn, range))) return; const fins = getFins(j);
+          if (!fins.length) { (fm['Not set'] ||= { n: 0, v: 0 }); fm['Not set'].n++; fm['Not set'].v += j.contract; return; }
+          fins.forEach(f => { const v = f.amount || (fins.length === 1 ? j.contract : 0); (fm[f.company] ||= { n: 0, v: 0 }); fm[f.company].n++; fm[f.company].v += v; }); });
         const rows = Object.entries(fm).sort((a, b) => b[1].v - a[1].v);
         return rows.length ? `<div class="ssec">By finance company</div><div class="scard">${rows.map(([k, x]) => `<div class="mrow"><span class="sico">🏦</span><span class="mbody"><b>${esc(k)}</b><small>${x.n} ${x.n === 1 ? 'job' : 'jobs'}</small></span><b>${money0(x.v)}</b></div>`).join('')}</div>` : ''; })()}
       <div class="ssec">Jobs</div>
@@ -603,8 +621,13 @@
     $('#mnTitle').textContent = j.addr || n; $('#mn-contract').value = j.contract || ''; $('#mn-sold').value = j.soldOn || '';
     $('#mn-seller').innerHTML = '<option value="">Me (you sold it)</option>' + team.map(x => `<option ${j.seller === x.name ? 'selected' : ''}>${esc(x.name)}</option>`).join('') + (j.seller && !team.some(x => x.name === j.seller) ? `<option selected>${esc(j.seller)}</option>` : '');
     $('#upRows').innerHTML = ''; (j.upsells || []).forEach(addUpRow);
-    $('#moneyBg').classList.add('open');
+    mnRoom(); $('#moneyBg').classList.add('open');
   }
+  function mnRoom() {
+    const j = jobs[moneyJob] || {}, c = parseInt(String($('#mn-contract').value).replace(/[^0-9]/g, ''), 10) || 0, sm = finSummary({ ...j, contract: c });
+    $('#mnRoom').innerHTML = sm.approved ? `💡 Approved up to <b>${money0(sm.approved)}</b>. Room left to upsell: <b>${money0(sm.room)}</b>` : '';
+  }
+  $('#mn-contract').addEventListener('input', mnRoom);
   $('#mnAddUp').onclick = () => addUpRow({});
   $('#upRows').onclick = e => { if (e.target.classList.contains('s-del')) e.target.closest('.uprow').remove(); };
   $('#mnCancel').onclick = () => $('#moneyBg').classList.remove('open');
@@ -628,17 +651,34 @@
   function openCfg() { $('#cf-pct').value = cfg.pct; $('#cf-over').value = cfg.override; $('#cf-goal').value = cfg.goal; $('#cfgBg').classList.add('open'); }
 
   // ---- finance company per job ----
-  function finStatusMenu(n) {
-    const j = jobs[n] = jobs[n] || {};
-    openPick('Finance status · ' + (j.finance || ''), FIN_STATUS.map(f => ({ label: (j.finStatus === f ? '✓ ' : '') + f, fn: () => { j.finStatus = f; saveJobs(); render(); } })));
+  let lnJob = '', lnIdx = -1;
+  function lnPreview() {
+    const j = jobs[lnJob] || {}, num = v => parseInt(String(v).replace(/[^0-9]/g, ''), 10) || 0;
+    const fins = getFins(j).map(f => ({ ...f })), cur = { company: $('#ln-comp').value, amount: num($('#ln-amt').value), approved: num($('#ln-appr').value) };
+    if (lnIdx >= 0) fins[lnIdx] = { ...fins[lnIdx], ...cur }; else fins.push(cur);
+    const sm = finSummary({ ...j, fins });
+    $('#lnRoom').innerHTML = sm.approved ? `Approved <b>${money0(sm.approved)}</b> · used <b>${money0(sm.used)}</b> · room to upsell <b>${money0(sm.room)}</b>` : 'Add the max approval to see how much room is left to upsell.';
   }
-  function finCompMenu(n) {
-    const j = jobs[n] = jobs[n] || {};
-    const items = finList().map(f => ({ label: (j.finance === f ? '✓ ' : '') + f, fn: () => { j.finance = f; if (f === 'Cash') j.finStatus = ''; saveJobs(); render(); if (f !== 'Cash') setTimeout(() => finStatusMenu(n), 120); } }));
-    if (j.finance) items.push({ label: 'Clear', danger: true, fn: () => { j.finance = ''; j.finStatus = ''; saveJobs(); render(); } });
-    items.push({ label: '✎ Edit the list of finance companies', fn: openFin });
-    openPick('Which finance company?', items);
+  function openLoan(n, idx) {
+    lnJob = n; lnIdx = idx; const j = jobs[n] || {}, fins = getFins(j), f = idx >= 0 ? fins[idx] : null, sm = finSummary(j);
+    $('#lnTitle').textContent = f ? 'Finance · ' + f.company : 'Add a finance company';
+    $('#ln-comp').innerHTML = finOptions(f ? f.company : '').replace('<option value="">Not set</option>', '<option value="">Choose…</option>');
+    $('#ln-stat').innerHTML = finStatusOptions(f ? f.status : 'Applied');
+    $('#ln-amt').value = f ? f.amount || '' : Math.max(0, (j.contract || 0) - sm.amounts) || '';
+    $('#ln-appr').value = f ? f.approved || '' : ''; $('#lnDel').hidden = !f;
+    lnPreview(); $('#lnBg').classList.add('open');
   }
+  ['#ln-comp', '#ln-amt', '#ln-appr'].forEach(i => { $(i).addEventListener('input', lnPreview); $(i).addEventListener('change', lnPreview); });
+  $('#lnCancel').onclick = () => $('#lnBg').classList.remove('open');
+  $('#lnBg').onclick = e => { if (e.target.id === 'lnBg') $('#lnBg').classList.remove('open'); };
+  $('#lnDel').onclick = () => { const j = jobs[lnJob]; if (!j || lnIdx < 0 || !confirm('Remove this finance company from the job?')) return; const f = getFins(j).map(x => ({ ...x })); f.splice(lnIdx, 1); j.fins = f; j.finance = ''; j.finStatus = ''; saveJobs(); $('#lnBg').classList.remove('open'); render(); };
+  $('#lnSave').onclick = () => {
+    const comp = $('#ln-comp').value; if (!comp) { toast('Choose a finance company'); return; }
+    const j = jobs[lnJob] = jobs[lnJob] || {}, num = v => parseInt(String(v).replace(/[^0-9]/g, ''), 10) || 0, f = getFins(j).map(x => ({ ...x, id: x.id === 'legacy' ? uid() : x.id }));
+    const rec = { id: lnIdx >= 0 ? f[lnIdx].id : uid(), company: comp, status: comp === 'Cash' ? '' : $('#ln-stat').value, amount: num($('#ln-amt').value), approved: comp === 'Cash' ? 0 : num($('#ln-appr').value) };
+    if (lnIdx >= 0) f[lnIdx] = rec; else f.push(rec);
+    j.fins = f; j.finance = ''; j.finStatus = ''; saveJobs(); $('#lnBg').classList.remove('open'); render();
+  };
   function openFin() { $('#fin-list').value = finList().join('\n'); $('#finBg').classList.add('open'); }
   $('#finCancel').onclick = () => $('#finBg').classList.remove('open');
   $('#finBg').onclick = e => { if (e.target.id === 'finBg') $('#finBg').classList.remove('open'); };
@@ -751,9 +791,14 @@
         ${srow('⭐', 'Starred messages', starred, 'jtab', 'data-tab="starred"')}
         ${srow('✅', 'To-do &amp; checklists', openN ? openN + ' open' : '✓', 'jtab', 'data-tab="tasks"')}
         ${srow('💵', 'Contract &amp; upsells', j.contract ? money0(j.contract) : 'Add', 'moneyjob', `data-p="${esc(n)}"`)}
-        ${srow('🏦', 'Finance company', j.finance ? esc(j.finance) : 'Choose', 'fincomp')}
-        ${j.finance && j.finance !== 'Cash' ? srow('📋', 'Finance status', j.finStatus ? esc(j.finStatus) : 'Set', 'finstat') : ''}
         ${srow('📝', 'Job summary', '', 'summary')}</div>
+      <div class="ssec">Financing</div><div class="scard">
+        ${(() => { const sm = finSummary(j);
+          const rows = sm.fins.map((f, i) => { const pc = f.approved ? Math.min(100, Math.round((f.amount || 0) / f.approved * 100)) : 0;
+            return `<button class="srow" data-act="finrow" data-i="${i}"><span class="sico">🏦</span><span class="slbl"><b>${esc(f.company)}</b><small>${esc(f.status || (f.company === 'Cash' ? 'Paid in cash' : 'No status'))}${f.approved ? ' · approved up to ' + money0(f.approved) : ''}</small>${f.approved ? `<span class="fbar"><i style="width:${pc}%"></i></span>` : ''}</span><span class="sval">${f.amount ? money0(f.amount) : 'Add $'}</span><span class="schev">›</span></button>`; }).join('');
+          const box = sm.approved ? `<div class="roombox"><div class="rtop"><span>💡 Room to upsell</span><b>${money0(sm.room)}</b></div><div class="rsub">Approved ${money0(sm.approved)} · used ${money0(sm.used)}${sm.offered ? ` · ${money0(sm.offered)} already offered, <b>${money0(sm.toPitch)}</b> left to pitch` : ''}</div></div>` : (sm.fins.length ? `<div class="roombox dim"><div class="rsub">Tap a finance company and add the <b>max approval</b> to see how much room is left to upsell.</div></div>` : '');
+          return rows + box; })()}
+        <button class="srow addm" data-act="finadd"><span class="sico">＋</span><span class="slbl">Add finance company</span></button></div>
       <div class="ssec">${mem.length + 1 + BOTS.length} members</div><div class="scard">
         <div class="mrow me">${`<span class="mav" style="background:#0f2747">${esc((OWNER || 'Y')[0])}</span>`}<span class="mbody"><b>${esc(OWNER || 'You')}</b><small>You</small></span></div>
         ${mem.map((x, i) => `<div class="mrow" data-act="member" data-i="${i}">${avatar(x)}<span class="mbody"><b>${esc(x.name)}</b><small>${esc(x.role || '')}${x.phone ? ' · ' + esc(x.phone) : ' · no phone'}</small></span>${hasPhone(x.phone) ? `<a class="mcall" href="tel:${esc(cleanPhone(x.phone))}" aria-label="Call">📞</a>` : ''}</div>`).join('')}
@@ -985,7 +1030,7 @@
               <span class="faddr ${j.addr ? '' : 'none'}">${esc(j.addr || 'No address yet')}</span>
               <span class="fclient">${esc(n)}</span>
               ${getSubs(j).length ? `<span class="subchips">${subChips(j)}</span>` : ''}
-              <span class="fmeta">${mine.length} open${late ? ` · <em>${late} late</em>` : nxt && nxt.due ? ' · next ' + fmtDate(nxt.due) : ''}${j.finance ? ` · <span class="fintag">🏦 ${esc(j.finance)}${j.finStatus ? ' · ' + esc(j.finStatus) : ''}</span>` : ''}</span>
+              <span class="fmeta">${mine.length} open${late ? ` · <em>${late} late</em>` : nxt && nxt.due ? ' · next ' + fmtDate(nxt.due) : ''}${getFins(j).length ? ` · <span class="fintag">🏦 ${esc(finTag(j))}</span>` : ''}</span>
             </span>
             <span class="fright">${j.upsell ? `<span class="pup set">${money(j.upsell)}</span>` : ''}<i>›</i></span>
           </button>`;
@@ -1250,7 +1295,7 @@
       T('c2', 'Find upsell opportunities with Cohen', C, d(1), { cat: 'visit', ord: 4, star: true, time: '08:00' }),
     ];
     const jb = {
-      [A]: { demo: true, finance: 'Aqua', finStatus: 'Approved', addr: '123 Main St, Palm Springs, CA', upsell: 30000, contract: 24500, soldOn: d(-6),
+      [A]: { demo: true, fins: [{ id: 'demo-f1', company: 'Aqua', status: 'Approved', amount: 24500, approved: 38000 }], addr: '123 Main St, Palm Springs, CA', upsell: 30000, contract: 24500, soldOn: d(-6),
         upsells: [{ id: 'demo-u1', title: 'Backsplash', amount: 3200, status: 'won', at: d(-3), wonAt: d(-3) }, { id: 'demo-u2', title: 'Under-cabinet lighting', amount: 1800, status: 'offered', at: d(-1) }, { id: 'demo-u3', title: 'Hallway flooring', amount: 5400, status: 'offered', at: d(-1) }], last: d(-6), kind: 'visit', every: 5, kick: d(-6),
         subs: [{ name: 'Carlos', trade: 'Plumber', phone: '760 555 0101' }, { name: 'Mike', trade: 'Electrician', phone: '760 555 0102' }],
         chat: [{ id: 'demo-m1', at: ago(50), kind: 'out', text: 'Hi team, it\'s ' + (OWNER || 'me') + '. Can you send photos of the current work at Martinez kitchen? Thanks!', to: ['Carlos', 'Mike'] },
@@ -1258,10 +1303,10 @@
                { id: 'demo-m3', at: ago(47), kind: 'in', who: 'Mike', text: 'Panel upgrade is scheduled for Friday. Customer asked about adding under-cabinet lighting.' },
                { id: 'demo-m4', at: ago(3), kind: 'out', text: 'Great. Martinez wants a backsplash too. Let\'s price it.' }],
         notes: [{ id: 'demo-n1', at: ago(30), text: 'Customer mentioned she may want new flooring in the hallway.' }] },
-      [B]: { demo: true, finance: 'Cash', addr: '45 Oak Ave, Barstow, CA', upsell: 12000, contract: 11800, soldOn: d(-8), seller: 'Sam (rep)', last: d(-2), kind: 'photos', every: 5, kick: d(-8),
+      [B]: { demo: true, fins: [{ id: 'demo-f2', company: 'Cash', status: '', amount: 11800, approved: 0 }], addr: '45 Oak Ave, Barstow, CA', upsell: 12000, contract: 11800, soldOn: d(-8), seller: 'Sam (rep)', last: d(-2), kind: 'photos', every: 5, kick: d(-8),
         subs: [{ name: 'Dave', trade: 'Tile', phone: '760 555 0103' }],
         chat: [{ id: 'demo-m5', at: ago(20), kind: 'in', who: 'Dave', text: 'Shower pan is in. Waiting on the inspector.' }] },
-      [C]: { demo: true, finance: 'Homerun', finStatus: 'Applied', addr: '900 Sunset Blvd, San Bernardino, CA', upsell: 45000, kick: d(1), every: 5,
+      [C]: { demo: true, fins: [{ id: 'demo-f3', company: 'Homerun', status: 'Applied', amount: 0, approved: 60000 }, { id: 'demo-f4', company: 'Figure', status: 'Approved', amount: 0, approved: 25000 }], addr: '900 Sunset Blvd, San Bernardino, CA', upsell: 45000, kick: d(1), every: 5,
         subs: [{ name: 'Tony', trade: 'General', phone: '909 555 0104' }], chat: [] },
     };
     tasks = [...tasks.filter(x => !x.demo), ...t]; Object.assign(jobs, jb);
@@ -1292,7 +1337,7 @@
   function paintMode() { document.querySelectorAll('#j-mode .chip').forEach(c => c.classList.toggle('on', c.dataset.m === jobMode)); $('#j-kickwrap').hidden = jobMode === 'old'; $('#jHelp').textContent = jobMode === 'old' ? 'Adds a job that is already underway. No kickoff checklist. You can paste its WhatsApp chat in right after.' : 'Creates your kickoff checklist (coffee + donuts, photos, DocuSign, sub walkthrough, upsell discovery) plus follow-ups.'; }
   $('#j-mode').onclick = e => { const c = e.target.closest('[data-m]'); if (c) { jobMode = c.dataset.m; paintMode(); } };
   function openJob(mode) {
-    jobMode = mode || 'new'; paintMode(); $('#j-fin').innerHTML = finOptions('');
+    jobMode = mode || 'new'; paintMode(); $('#j-fin').innerHTML = finOptions(''); $('#j-appr').value = '';
     ['#j-name', '#j-sub', '#j-phone', '#j-addr', '#j-upsell', '#j-contract'].forEach(i => { $(i).value = ''; $(i).classList.remove('err'); });
     setKick(addDays(1)); $('#j-time').value = '08:00';
     $('#jobBg').classList.add('open'); setTimeout(() => $('#j-addr').focus(), 60);
@@ -1324,7 +1369,8 @@
     }));
     const contract = parseInt(($('#j-contract').value || '').replace(/[^0-9]/g, ''), 10) || 0;
     if (pendingLead) { const l = leads.find(x => x.id === pendingLead); if (l) { l.stage = 'sold'; l.job = name; saveLeads(); } pendingLead = null; }
-    jobs[name] = { ...(jobs[name] || {}), finance: $('#j-fin').value, upsell: amt, ...(contract ? { contract, ...(jobMode === 'new' ? { soldOn: todayISO() } : {}) } : {}), subs, sub: undefined, phone: undefined, addr: $('#j-addr').value.trim(), ...(jobMode === 'new' ? { kick } : {}), every: jobs[name]?.every || 5 };
+    const finCo = $('#j-fin').value, apprIn = parseInt(($('#j-appr').value || '').replace(/[^0-9]/g, ''), 10) || 0;
+    jobs[name] = { ...(jobs[name] || {}), ...(finCo ? { fins: [{ id: uid(), company: finCo, status: finCo === 'Cash' ? '' : 'Applied', amount: contract || 0, approved: finCo === 'Cash' ? 0 : apprIn }], finance: '', finStatus: '' } : {}), upsell: amt, ...(contract ? { contract, ...(jobMode === 'new' ? { soldOn: todayISO() } : {}) } : {}), subs, sub: undefined, phone: undefined, addr: $('#j-addr').value.trim(), ...(jobMode === 'new' ? { kick } : {}), every: jobs[name]?.every || 5 };
     saveJobs(); save(); closeJob();
     if (jobMode === 'old') { curJob = name; jobTab = 'chat'; tabHist = []; chatLimit = 300; view = 'job'; render(); toast('Job added. Tap ＋ then Import WhatsApp chat to bring in the history.'); return; }
     view = 'today'; filter = 'all'; render(); window.scrollTo(0, 0);
@@ -1336,7 +1382,6 @@
   function openEdit(n) {
     const j = jobs[n] || {}; editName = n; editEvery = j.every || 5;
     $('#eTitle').textContent = n;
-    $('#e-fin').innerHTML = finOptions(j.finance); $('#e-finst').innerHTML = finStatusOptions(j.finStatus);
     $('#e-addr').value = j.addr || ''; $('#e-wa').value = j.wa || ''; $('#e-upsell').value = j.upsell || '';
     $('#subRows').innerHTML = ''; const cur = getSubs(j); (cur.length ? cur : [{}]).forEach(addSubRow);
     paintEvery(); $('#editBg').classList.add('open');
@@ -1358,7 +1403,7 @@
   $('#editBg').onclick = e => { if (e.target.id === 'editBg') closeEdit(); };
   $('#everyChips').onclick = e => { const c = e.target.closest('.chip'); if (c) { editEvery = +c.dataset.e; paintEvery(); } };
   $('#eSave').onclick = () => {
-    jobs[editName] = { ...(jobs[editName] || {}), addr: $('#e-addr').value.trim(), wa: $('#e-wa').value.trim(), finance: $('#e-fin').value, finStatus: $('#e-fin').value && $('#e-fin').value !== 'Cash' ? $('#e-finst').value : '', sub: undefined, phone: undefined,
+    jobs[editName] = { ...(jobs[editName] || {}), addr: $('#e-addr').value.trim(), wa: $('#e-wa').value.trim(), sub: undefined, phone: undefined,
       subs: [...document.querySelectorAll('#subRows .subrow')].map(r => ({ name: r.querySelector('.s-name').value.trim(), trade: r.querySelector('.s-trade').value.trim(), phone: r.querySelector('.s-phone').value.trim() })).filter(x => x.name),
       upsell: parseInt($('#e-upsell').value.replace(/[^0-9]/g, ''), 10) || 0, every: editEvery };
     saveJobs(); closeEdit(); render();
@@ -1450,8 +1495,8 @@
       if (act === 'addmember') return addMemberMenu(curJob);
       if (act === 'subrow') { if (e.target.closest('.mcall')) return; return subMenu(curJob, +el.dataset.i); }
       if (act === 'addsub') { openEdit(curJob); addSubRow(); return; }
-      if (act === 'fincomp') return finCompMenu(curJob);
-      if (act === 'finstat') return finStatusMenu(curJob);
+      if (act === 'finrow') return openLoan(curJob, +el.dataset.i);
+      if (act === 'finadd') return openLoan(curJob, -1);
       if (act === 'finedit') return openFin();
       if (act === 'subdir') return subDirMenu(+el.dataset.i);
       if (act === 'member') { if (e.target.closest('.mcall')) return; return memberMenu(curJob, +el.dataset.i); }
