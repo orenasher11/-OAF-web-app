@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '21';
+  const APP_VERSION = '23';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -25,6 +25,14 @@
   if (!OWNER && tasks.length) OWNER = 'Oren';   // existing installs keep the original name
   const changed = () => { try { window.OAF && window.OAF.onChange && window.OAF.onChange(); } catch {} };
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(tasks)); } catch {} changed(); };
+  let cfg = { pct: 10, override: 1, goal: 500000 };
+  try { cfg = { ...cfg, ...(JSON.parse(localStorage.getItem('oaf-cfg-v1')) || {}) }; } catch {}
+  const saveCfg = () => { try { localStorage.setItem('oaf-cfg-v1', JSON.stringify(cfg)); } catch {} changed(); };
+  let leads = [], reports = [], moneyPer = 'month';
+  try { leads = JSON.parse(localStorage.getItem('oaf-leads-v1')) || []; } catch {}
+  try { reports = JSON.parse(localStorage.getItem('oaf-reports-v1')) || []; } catch {}
+  const saveLeads = () => { try { localStorage.setItem('oaf-leads-v1', JSON.stringify(leads)); } catch {} changed(); };
+  const saveReports = () => { try { localStorage.setItem('oaf-reports-v1', JSON.stringify(reports)); } catch {} changed(); };
   const JOBS_KEY = 'oaf-jobs-v1';        // per-project info: upsell potential, sub
   let jobs = {};
   try { jobs = JSON.parse(localStorage.getItem(JOBS_KEY)) || {}; } catch { jobs = {}; }
@@ -211,10 +219,11 @@
   try { sendVia = localStorage.getItem('oaf-via-v1') || 'wa'; } catch {}
   let lastTap = { id: '', t: 0 }, pressTimer = null, pressed = false;
 
+  let chatLimit = 300;
   function chatHTML(n) {
-    const items = timeline(n);
-    if (!items.length) return `<div class="chatempty">🔒 Messages, replies, notes and job updates for this job show up here.<br>Tap <b>＋</b> to get started.</div>`;
-    let last = '', prev = '', out = '<div class="chat">';
+    const all = timeline(n), items = all.slice(-chatLimit);
+    if (!items.length) return `<div class="chatempty">🔒 Messages, replies, notes and job updates for this job show up here.<br>Already have a WhatsApp group for this job? Tap <b>＋</b> then <b>Import WhatsApp chat</b>.</div>`;
+    let last = '', prev = '', out = '<div class="chat">' + (all.length > items.length ? `<button class="older" data-act="older">Show ${Math.min(300, all.length - items.length)} earlier messages</button>` : '');
     items.forEach(x => {
       const d = new Date(x.ts), key = iso(d);
       if (key !== last) { out += `<div class="bday"><span>${fmtDate(key)}</span></div>`; last = key; prev = ''; }
@@ -275,6 +284,66 @@
     if (g.length) location.href = `sms:${g.map(x => cleanPhone(x.phone)).join(',')}${/iPhone|iPad|Mac/.test(navigator.userAgent) ? '&' : '?'}body=${encodeURIComponent(text)}`;
     else toast('Saved as a note. Pick who to text from ＋ → Quick messages.');
   }
+  // ---- import a whole WhatsApp chat (paste or exported .txt) ----
+  const h32 = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
+  function parseWAChat(raw) {
+    const clean = String(raw).replace(/[\u200e\u200f\u202a-\u202e\u00a0\u202f]/g, ' ').replace(/\r/g, '');
+    const head = /^\[?(\d{1,4})[\/.\-](\d{1,2})[\/.\-](\d{1,4}),?\s+(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*([AaPp]\.?[Mm]\.?)?\]?\s*(?:[-–—]\s*)?(.*)$/;
+    const recs = []; let cur = null, dmCount = 0;
+    for (const line of clean.split('\n')) {
+      const m = line.replace(/^\s+/, '').match(head);
+      if (m && m[1].length <= 2) {
+        const nm = m[8].match(/^([^:]{1,60}?):\s?([\s\S]*)$/);
+        if (+m[1] > 12) dmCount++;
+        if (nm) { cur = { a: +m[1], b: +m[2], c: +m[3], hh: +m[4], mi: +m[5], ss: +(m[6] || 0), ap: m[7], who: nm[1].trim(), text: nm[2] }; recs.push(cur); } else cur = null;
+      } else if (cur) cur.text += '\n' + line;
+    }
+    const dmy = dmCount > 0, msgs = [];
+    recs.forEach(r => {
+      let day = dmy ? r.a : r.b, mon = dmy ? r.b : r.a, yr = r.c < 100 ? 2000 + r.c : r.c, hh = r.hh;
+      if (r.ap) { const ap = r.ap.toLowerCase().replace(/\./g, ''); if (ap === 'pm' && hh < 12) hh += 12; if (ap === 'am' && hh === 12) hh = 0; }
+      const d = new Date(yr, mon - 1, day, hh, r.mi, r.ss);
+      if (isNaN(d) || mon < 1 || mon > 12 || day < 1 || day > 31) return;
+      const text = r.text.replace(/\s+$/, ''); if (!text) return;
+      msgs.push({ at: d.toISOString(), who: r.who, text });
+    });
+    return { msgs, dmy };
+  }
+  let impParsed = null, impMe = '';
+  function paintImport() {
+    const el = $('#impSummary'), r = impParsed;
+    if (!r || !r.msgs.length) { el.innerHTML = $('#imp-text').value.trim() ? '<div class="cerr">I could not find WhatsApp messages in that text. Paste the chat the way WhatsApp copies it, or choose the exported .txt file.</div>' : ''; $('#impGo').disabled = true; return; }
+    const by = {}; r.msgs.forEach(m => by[m.who] = (by[m.who] || 0) + 1);
+    const names = Object.keys(by).sort((a, b) => by[b] - by[a]);
+    if (!names.includes(impMe) && impMe !== '__none') impMe = names.find(n => OWNER && n.toLowerCase().includes(OWNER.toLowerCase())) || '__none';
+    const first = new Date(r.msgs[0].at), last = new Date(r.msgs[r.msgs.length - 1].at), f = d => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    el.innerHTML = `<div class="cok">Found <b>${r.msgs.length}</b> messages<br><small>${f(first)} to ${f(last)} · dates read as ${r.dmy ? 'day/month' : 'month/day'}</small></div>
+      <label>Which person is you?</label>` + names.map(n => `<label class="rcpt"><input type="radio" name="impme" value="${esc(n)}" ${impMe === n ? 'checked' : ''}><span><b>${esc(n)}</b><small>${by[n]} messages</small></span></label>`).join('')
+      + `<label class="rcpt"><input type="radio" name="impme" value="__none" ${impMe === '__none' ? 'checked' : ''}><span><b>None of them</b><small>I wasn't in this chat</small></span></label>`;
+    $('#impGo').disabled = false; $('#impGo').textContent = `Import ${r.msgs.length} messages`;
+  }
+  let impTimer = null;
+  $('#imp-text').addEventListener('input', () => { clearTimeout(impTimer); impTimer = setTimeout(() => { impParsed = parseWAChat($('#imp-text').value); paintImport(); }, 250); });
+  $('#imp-file').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const t = await f.text(); $('#imp-text').value = t.length > 400000 ? t.slice(0, 400000) : t; impParsed = parseWAChat(t); paintImport(); } catch { toast('Could not read that file'); } e.target.value = ''; };
+  $('#impSummary').onchange = e => { if (e.target.name === 'impme') impMe = e.target.value; };
+  $('#impCancel').onclick = () => $('#impBg').classList.remove('open');
+  $('#impBg').onclick = e => { if (e.target.id === 'impBg') $('#impBg').classList.remove('open'); };
+  $('#impGo').onclick = () => {
+    if (!impParsed || !impParsed.msgs.length) return;
+    const j = jobs[curJob] = jobs[curJob] || {}, have = new Set((j.chat || []).map(m => m.id)); let added = 0;
+    const add = [];
+    impParsed.msgs.slice(0, 8000).forEach((m, i) => {
+      const id = 'wa-' + h32(m.at + '|' + m.who + '|' + m.text + '|' + (i < 3 ? 0 : 0));
+      if (have.has(id)) return; have.add(id);
+      const mine = impMe !== '__none' && m.who === impMe;
+      add.push({ id, at: m.at, kind: mine ? 'out' : 'in', ...(mine ? { by: m.who } : { who: m.who }), text: m.text, via: 'wa', imp: true }); added++;
+    });
+    j.chat = [...(j.chat || []), ...add].sort((a, b) => String(a.at).localeCompare(String(b.at)));
+    saveJobs(); $('#impBg').classList.remove('open'); chatLimit = 300; render();
+    toast(`Imported ${added} messages${impParsed.msgs.length - added > 0 ? ` (${impParsed.msgs.length - added} were already here)` : ''}`);
+  };
+  function openImport() { impParsed = null; impMe = ''; $('#imp-text').value = ''; $('#impSummary').innerHTML = ''; $('#impGo').disabled = true; $('#impGo').textContent = 'Import'; $('#impBg').classList.add('open'); }
+
   // paste copied WhatsApp messages: "[10/10/26, 11:18 PM] Name: text" (also "10/10/26, 11:18 PM - Name: text")
   function parseWhatsApp(text) {
     const re = /^\[?(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4}),?\s+(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?\]?\s*[-–]?\s*([^:\n]{1,40}?):\s*(.*)$/;
@@ -289,6 +358,162 @@
     });
     return out;
   }
+  // ---- money: commissions, overrides, upsells ----
+  const money0 = n => '$' + Math.round(n || 0).toLocaleString('en-US');
+  function periodRange(p) {
+    const d = new Date(), y = d.getFullYear(), m = d.getMonth();
+    if (p === 'month') return [iso(new Date(y, m, 1)), iso(new Date(y, m + 1, 0))];
+    if (p === 'last') return [iso(new Date(y, m - 1, 1)), iso(new Date(y, m, 0))];
+    return [y + '-01-01', y + '-12-31'];
+  }
+  const inR = (d, r) => d && d >= r[0] && d <= r[1];
+  function earnings(range) {
+    const r = { deals: 0, contracts: 0, base: 0, over: 0, upWon: 0, upComm: 0, upPlay: 0, upOff: 0 };
+    Object.values(jobs).forEach(j => {
+      if (!j) return;
+      if (j.contract && inR(j.soldOn, range)) { r.deals++; r.contracts += j.contract; if (j.seller) r.over += j.contract * cfg.override / 100; else r.base += j.contract * cfg.pct / 100; }
+      (j.upsells || []).forEach(u => {
+        if (u.status === 'won' && inR(u.wonAt || u.at, range)) { r.upWon += u.amount; r.upComm += u.amount * cfg.pct / 100; }
+        if (u.status === 'offered') { r.upPlay += u.amount; r.upOff++; }
+      });
+    });
+    r.total = r.base + r.over + r.upComm; return r;
+  }
+  function screenMoney() {
+    const range = periodRange(moneyPer), e = earnings(range), ytd = earnings(periodRange('year'));
+    const now = new Date(), dayOfYear = Math.max(1, Math.round((now - new Date(now.getFullYear(), 0, 0)) / 864e5));
+    const pace = ytd.total / dayOfYear * 365, pct = cfg.goal ? Math.min(100, Math.round(ytd.total / cfg.goal * 100)) : 0;
+    const seg = (k, l) => `<button class="${moneyPer === k ? 'on' : ''}" data-act="mper" data-t="${k}">${l}</button>`;
+    const list = Object.entries(jobs).filter(([, j]) => j && (j.contract || (j.upsells || []).length)).sort((a, b) => String(b[1].soldOn || '').localeCompare(String(a[1].soldOn || '')));
+    const noCon = Object.entries(jobs).filter(([, j]) => j && !j.contract && !(j.upsells || []).length);
+    const jr = ([n, j]) => { const ups = j.upsells || [], won = ups.filter(u => u.status === 'won').reduce((a, u) => a + u.amount, 0), off = ups.filter(u => u.status === 'offered').reduce((a, u) => a + u.amount, 0);
+      return `<button class="srow" data-act="moneyjob" data-p="${esc(n)}"><span class="sico">💼</span><span class="slbl"><b>${esc(j.addr || n)}</b><small>${esc(n)}${j.seller ? ' · sold by ' + esc(j.seller) : ''}${won ? ' · ' + money0(won) + ' upsell won' : ''}${off ? ' · ' + money0(off) + ' offered' : ''}</small></span><span class="sval">${j.contract ? money0(j.contract) : 'Add $'}</span><span class="schev">›</span></button>`; };
+    return `<div class="seg">${seg('month', 'This month')}${seg('last', 'Last month')}${seg('year', 'This year')}</div>
+      <div class="bigcard"><div class="bl">You earned</div><div class="bn">${money0(e.total)}</div><div class="bs">${e.deals} ${e.deals === 1 ? 'job' : 'jobs'} sold · ${money0(e.contracts)} in contracts</div></div>
+      <div class="scard">
+        <div class="mrow"><span class="sico">💼</span><span class="mbody"><b>Jobs you sold</b><small>${cfg.pct}% commission</small></span><b>${money0(e.base)}</b></div>
+        <div class="mrow"><span class="sico">🤝</span><span class="mbody"><b>Rep overrides</b><small>${cfg.override}% of rep deals</small></span><b>${money0(e.over)}</b></div>
+        <div class="mrow"><span class="sico">⬆️</span><span class="mbody"><b>Upsells won</b><small>${money0(e.upWon)} sold at ${cfg.pct}%</small></span><b>${money0(e.upComm)}</b></div>
+        <div class="mrow"><span class="sico">⏳</span><span class="mbody"><b>Upsells in play</b><small>${e.upOff} offered, waiting on the customer</small></span><b>${money0(e.upPlay)}</b></div></div>
+      <div class="ssec">Yearly goal</div>
+      <div class="scard goal"><div class="grow"><b>${money0(ytd.total)}</b><span>of ${money0(cfg.goal)} · ${pct}%</span></div>
+        <div class="prog"><i style="width:${pct}%"></i></div>
+        <div class="gnote">At this pace you finish the year at <b>${money0(pace)}</b>${cfg.goal && pace < cfg.goal ? ` (${money0(cfg.goal - pace)} short)` : cfg.goal ? ' 🎉' : ''}</div>
+        <button class="spill" data-act="cfgedit">⚙ Rates &amp; goal</button></div>
+      <div class="ssec">Jobs</div>
+      <div class="scard">${list.length ? list.map(jr).join('') : '<div class="empty small">No contracts entered yet. Tap a job below to add one.</div>'}
+        ${noCon.map(([n, j]) => `<button class="srow" data-act="moneyjob" data-p="${esc(n)}"><span class="sico">➕</span><span class="slbl"><b>${esc(j.addr || n)}</b><small>${esc(n)}</small></span><span class="sval">Add $</span><span class="schev">›</span></button>`).join('')}</div>`;
+  }
+  // ---- leads pipeline ----
+  const STAGES = [['new', 'New'], ['meeting', 'Meeting set'], ['quoted', 'Quoted'], ['sold', 'Sold'], ['lost', 'Lost']];
+  const stageName = k => (STAGES.find(x => x[0] === k) || [0, k])[1];
+  let leadF = 'open', editLeadId = null, leadStageSel = 'new', pendingLead = null;
+  const isOpenLead = l => l.stage !== 'sold' && l.stage !== 'lost';
+  const leadsDue = () => leads.filter(l => isOpenLead(l) && l.next && l.next <= todayISO());
+  function leadLine(l) {
+    const bits = []; if (l.value) bits.push(money0(l.value)); if (l.source) bits.push(l.source);
+    if (l.rep) bits.push('rep: ' + l.rep);
+    return bits.join(' · ');
+  }
+  function screenLeads() {
+    const t0 = todayISO(), open = leads.filter(isOpenLead), due = leadsDue();
+    const list = (leadF === 'today' ? due : leadF === 'sold' ? leads.filter(l => l.stage === 'sold') : leadF === 'lost' ? leads.filter(l => l.stage === 'lost') : open)
+      .slice().sort((a, b) => (a.next || '9999').localeCompare(b.next || '9999') || a.name.localeCompare(b.name));
+    const seg = (k, l, c) => `<button class="${leadF === k ? 'on' : ''}" data-act="lfilter" data-t="${k}">${l} ${c}</button>`;
+    const fun = ['new', 'meeting', 'quoted'].map(k => `<div><b>${leads.filter(l => l.stage === k).length}</b><span>${stageName(k)}</span></div>`).join('');
+    const card = l => {
+      const late = isOpenLead(l) && l.next && l.next < t0, today = isOpenLead(l) && l.next === t0;
+      return `<div class="lcard ${late ? 'late' : ''}" data-id="${l.id}">
+        <div class="ltop"><div class="lbody"><b class="lname">${esc(l.name)}</b><div class="lsub">${esc(l.addr || l.phone || 'No contact info yet')}</div></div><span class="stg stg-${l.stage}">${stageName(l.stage)}</span></div>
+        <div class="lmeta">${esc(leadLine(l))}</div>
+        <div class="lmeta">${l.meetAt ? '📅 ' + fmtDate(l.meetAt) + (l.meetTime ? ' · ' + fmtTime(l.meetTime) : '') + '  ' : ''}${l.next && isOpenLead(l) ? `<span class="${late ? 'date late' : today ? 'date today' : 'date'}">☎ Follow up ${fmtDate(l.next).toLowerCase()}</span>` : ''}</div>
+        ${l.notes ? `<div class="lnote">${esc(l.notes)}</div>` : ''}
+        <div class="vbtns">
+          ${l.phone ? `<button data-act="lcall">📞 Call</button><button data-act="ltext">💬 Text</button>` : ''}
+          ${l.addr ? `<button data-act="lgo">🧭 Go</button>` : ''}
+          ${isOpenLead(l) ? `<button data-act="lsnz">+3d</button>` : ''}
+          <button data-act="lstage" class="${isOpenLead(l) ? 'pri' : ''}">${l.stage === 'sold' ? '✅ Sold' : l.stage === 'lost' ? 'Reopen' : 'Stage ▾'}</button>
+          <button data-act="ledit" aria-label="Edit">✎</button>
+        </div></div>`;
+    };
+    return `<div class="jobactions"><button class="jbtn primary" data-act="lnew">＋ New lead</button></div>
+      <div class="funnel">${fun}</div>
+      <div class="seg">${seg('open', 'Open', open.length)}${seg('today', 'Follow up', due.length)}${seg('sold', 'Sold', leads.filter(l => l.stage === 'sold').length)}${seg('lost', 'Lost', leads.filter(l => l.stage === 'lost').length)}</div>
+      ${list.length ? list.map(card).join('') : `<div class="empty small"><div class="big">☎️</div>${leadF === 'open' ? 'No open leads. Tap ＋ New lead to add one.' : 'Nothing here.'}</div>`}`;
+  }
+  function openLead(id) {
+    editLeadId = id || null; const l = id ? leads.find(x => x.id === id) : null;
+    $('#ldTitle').textContent = l ? 'Edit lead' : 'New lead';
+    $('#l-name').value = l ? l.name : ''; $('#l-phone').value = l ? l.phone || '' : ''; $('#l-addr').value = l ? l.addr || '' : ''; $('#l-src').value = l ? l.source || '' : '';
+    $('#l-val').value = l && l.value ? l.value : ''; $('#l-next').value = l ? l.next || '' : addDays(1); $('#l-mdate').value = l ? l.meetAt || '' : ''; $('#l-mtime').value = l ? l.meetTime || '' : '';
+    $('#l-notes').value = l ? l.notes || '' : '';
+    $('#l-rep').innerHTML = '<option value="">Me</option>' + team.map(x => `<option ${l && l.rep === x.name ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+    leadStageSel = l ? l.stage : 'new'; paintLeadStage(); paintNext();
+    $('#ldDel').hidden = !l; $('#leadBg').classList.add('open'); if (!l) setTimeout(() => $('#l-name').focus(), 60);
+  }
+  const paintLeadStage = () => { $('#l-stages').innerHTML = STAGES.map(([k, n]) => `<button type="button" class="chip ${leadStageSel === k ? 'on' : ''}" data-s="${k}">${n}</button>`).join(''); };
+  const paintNext = () => document.querySelectorAll('#l-nchips .chip').forEach(c => c.classList.toggle('on', !!$('#l-next').value && addDays(+c.dataset.d) === $('#l-next').value));
+  $('#l-stages').onclick = e => { const c = e.target.closest('[data-s]'); if (c) { leadStageSel = c.dataset.s; paintLeadStage(); } };
+  $('#l-nchips').onclick = e => { const c = e.target.closest('[data-d]'); if (c) { $('#l-next').value = addDays(+c.dataset.d); paintNext(); } };
+  $('#l-next').onchange = paintNext;
+  $('#ldCancel').onclick = () => $('#leadBg').classList.remove('open');
+  $('#leadBg').onclick = e => { if (e.target.id === 'leadBg') $('#leadBg').classList.remove('open'); };
+  $('#ldDel').onclick = () => { if (editLeadId && confirm('Delete this lead?')) { leads = leads.filter(x => x.id !== editLeadId); saveLeads(); $('#leadBg').classList.remove('open'); render(); } };
+  $('#ldSave').onclick = () => {
+    const name = $('#l-name').value.trim(); if (!name) { $('#l-name').focus(); return; }
+    const data = { name, phone: $('#l-phone').value.trim(), addr: $('#l-addr').value.trim(), source: $('#l-src').value.trim(), value: parseInt($('#l-val').value.replace(/[^0-9]/g, ''), 10) || 0,
+      next: $('#l-next').value, meetAt: $('#l-mdate').value, meetTime: $('#l-mtime').value, notes: $('#l-notes').value.trim(), rep: $('#l-rep').value, stage: leadStageSel };
+    let l; if (editLeadId) { l = leads.find(x => x.id === editLeadId); Object.assign(l, data); } else { l = { id: uid(), createdAt: todayISO(), ...data }; leads.push(l); }
+    saveLeads(); $('#leadBg').classList.remove('open'); render();
+    if (data.stage === 'sold' && !l.job) leadToJob(l);
+  };
+  function leadToJob(l) {
+    pendingLead = l.id; openJob(); $('#j-addr').value = l.addr || ''; $('#j-name').value = l.name || ''; $('#j-contract').value = l.value || '';
+  }
+  function leadStageMenu(l) {
+    const items = STAGES.filter(x => x[0] !== l.stage).map(([k, n]) => ({ label: (k === 'sold' ? '✅ ' : k === 'lost' ? '✖ ' : '→ ') + n, danger: k === 'lost', fn: () => { l.stage = k; saveLeads(); render(); if (k === 'sold' && !l.job) leadToJob(l); } }));
+    openPick(l.name + ' · ' + stageName(l.stage), items);
+  }
+
+  // per-job money sheet
+  let moneyJob = '';
+  function addUpRow(u = {}) {
+    const d = document.createElement('div'); d.className = 'uprow'; d.dataset.id = u.id || ''; d.dataset.at = u.at || ''; d.dataset.won = u.wonAt || '';
+    d.innerHTML = `<input class="u-title" placeholder="What was offered (e.g. backsplash)" value="${esc(u.title || '')}" autocomplete="off">
+      <input class="u-amt" inputmode="numeric" placeholder="$" value="${u.amount || ''}">
+      <select class="u-st"><option value="offered" ${u.status === 'offered' || !u.status ? 'selected' : ''}>Offered</option><option value="won" ${u.status === 'won' ? 'selected' : ''}>Won ✓</option><option value="lost" ${u.status === 'lost' ? 'selected' : ''}>Lost</option></select>
+      <button type="button" class="s-del" aria-label="Remove">×</button>`;
+    $('#upRows').appendChild(d);
+  }
+  function openMoney(n) {
+    moneyJob = n; const j = jobs[n] || {};
+    $('#mnTitle').textContent = j.addr || n; $('#mn-contract').value = j.contract || ''; $('#mn-sold').value = j.soldOn || '';
+    $('#mn-seller').innerHTML = '<option value="">Me (you sold it)</option>' + team.map(x => `<option ${j.seller === x.name ? 'selected' : ''}>${esc(x.name)}</option>`).join('') + (j.seller && !team.some(x => x.name === j.seller) ? `<option selected>${esc(j.seller)}</option>` : '');
+    $('#upRows').innerHTML = ''; (j.upsells || []).forEach(addUpRow);
+    $('#moneyBg').classList.add('open');
+  }
+  $('#mnAddUp').onclick = () => addUpRow({});
+  $('#upRows').onclick = e => { if (e.target.classList.contains('s-del')) e.target.closest('.uprow').remove(); };
+  $('#mnCancel').onclick = () => $('#moneyBg').classList.remove('open');
+  $('#moneyBg').onclick = e => { if (e.target.id === 'moneyBg') $('#moneyBg').classList.remove('open'); };
+  $('#mnSave').onclick = () => {
+    const j = jobs[moneyJob] = jobs[moneyJob] || {}, num = v => parseInt(String(v).replace(/[^0-9]/g, ''), 10) || 0;
+    j.contract = num($('#mn-contract').value); j.soldOn = $('#mn-sold').value || (j.contract ? (j.soldOn || todayISO()) : ''); j.seller = $('#mn-seller').value;
+    j.upsells = [...document.querySelectorAll('#upRows .uprow')].map(r => {
+      const st = r.querySelector('.u-st').value, amt = num(r.querySelector('.u-amt').value);
+      return { id: r.dataset.id || uid(), title: r.querySelector('.u-title').value.trim(), amount: amt, status: st, at: r.dataset.at || todayISO(), wonAt: st === 'won' ? (r.dataset.won || todayISO()) : '' };
+    }).filter(u => u.title || u.amount);
+    saveJobs(); $('#moneyBg').classList.remove('open'); render(); toast('Saved');
+  };
+  $('#cfgCancel').onclick = () => $('#cfgBg').classList.remove('open');
+  $('#cfgBg').onclick = e => { if (e.target.id === 'cfgBg') $('#cfgBg').classList.remove('open'); };
+  $('#cfgSave').onclick = () => {
+    const f = v => parseFloat(String(v).replace(/[^0-9.]/g, '')) || 0;
+    cfg.pct = f($('#cf-pct').value); cfg.override = f($('#cf-over').value); cfg.goal = f($('#cf-goal').value);
+    saveCfg(); $('#cfgBg').classList.remove('open'); render();
+  };
+  function openCfg() { $('#cf-pct').value = cfg.pct; $('#cf-over').value = cfg.override; $('#cf-goal').value = cfg.goal; $('#cfgBg').classList.add('open'); }
+
   // ---- WhatsApp-style group info screens ----
   let tabHist = [], mediaTab = 'media', chatSearch = false, pendingJump = null;
   const waNum = p => { const d = String(p || '').replace(/\D/g, ''); return d.length === 10 ? '1' + d : d; };
@@ -366,6 +591,7 @@
         ${srow('🖼️', 'Media, links and docs', media.length + links, 'jtab', 'data-tab="media"')}
         ${srow('⭐', 'Starred messages', starred, 'jtab', 'data-tab="starred"')}
         ${srow('✅', 'To-do &amp; checklists', openN ? openN + ' open' : '✓', 'jtab', 'data-tab="tasks"')}
+        ${srow('💵', 'Contract &amp; upsells', j.contract ? money0(j.contract) : 'Add', 'moneyjob', `data-p="${esc(n)}"`)}
         ${srow('📝', 'Job summary', '', 'summary')}</div>
       <div class="ssec">${mem.length + 1} members</div><div class="scard">
         <div class="mrow me">${`<span class="mav" style="background:#0f2747">${esc((OWNER || 'Y')[0])}</span>`}<span class="mbody"><b>${esc(OWNER || 'You')}</b><small>You</small></span></div>
@@ -466,7 +692,8 @@
       if (filter === 'all' || filter === 'done') if (doneToday.length) html += `<div class="section-title">Done today</div>` + doneToday.map(taskHTML).join('');
       const needV = visitList().filter(v => v.state === 'late').length;
       if (needV && filter === 'all') html = `<button class="alert" data-go="visits">🚗 <b>${needV}</b> ${needV === 1 ? 'job needs' : 'jobs need'} a site visit<span>Open ›</span></button>` + html;
-      const evlink = `<button class="evlink" data-go="evening">🌙 <b>Evening review</b><span>Open ›</span></button>`;
+      const ldA = leadsDue().length;
+      const evlink = (ldA && filter === 'all' ? `<button class="alert warn" data-go="leads">☎️ <b>${ldA}</b> ${ldA === 1 ? 'lead' : 'leads'} to follow up<span>Open ›</span></button>` : '') + `<button class="evlink" data-go="evening">🌙 <b>Evening review</b><span>Open ›</span></button>`;
       if (!html) html = !tasks.length && !Object.keys(jobs).length && filter === 'all'
         ? `<div class="welcome"><div class="wbig">👋</div><h3>Welcome</h3><p>This is a work-in-progress app for managing jobs, subs, and the team chat. Take a look around and tell us what you think.</p>
             <button class="jbtn primary wide" data-act="demoload">✨ Load sample jobs</button>
@@ -500,6 +727,33 @@
           </div>
         </div>`;
       });
+    } else if (view === 'leads') {
+      const dueN = leadsDue().length;
+      $('#h1').textContent = 'Leads'; $('#sub').textContent = dueN ? `${dueN} to follow up today` : 'Your pipeline';
+      html += screenLeads();
+    } else if (view === 'money') {
+      $('#h1').textContent = 'Money'; $('#sub').textContent = 'Commissions, overrides and upsells';
+      html += screenMoney();
+    } else if (view === 'more') {
+      const lateV = visitList().filter(v => v.state === 'late').length;
+      $('#h1').textContent = 'More'; $('#sub').textContent = 'Tools and settings';
+      html += `<div class="scard">
+        ${srow('🚗', 'Site visits', lateV ? `<b class="red">${lateV} overdue</b>` : '', 'go', 'data-v="visits"')}
+        ${srow('📅', 'Calendar &amp; routes', '', 'go', 'data-v="calendar"')}
+        ${srow('🗓️', 'Upcoming tasks', '', 'go', 'data-v="upcoming"')}
+        ${srow('📊', 'Rep reports &amp; scorecards', '', 'go', 'data-v="reports"')}
+        ${srow('🌙', 'Evening review', '', 'go', 'data-v="evening"')}</div>
+        <div class="ssec">Settings</div><div class="tools">
+        <button id="teamBtn">👥 My team</button>
+        <button id="cloudBtn">☁️ Cloud · ${window.OAFsync ? window.OAFsync.label() : '…'}</button>
+        <button id="exportBtn">⬇ Back up</button>
+        <button id="importBtn">⬆ Restore</button>
+        <button id="demoBtn">${Object.values(jobs).some(j => j && j.demo) ? '🧹 Remove sample jobs' : '✨ Add sample jobs'}</button>
+        <button id="fbBtn">💬 Send feedback</button>
+        <button id="updateBtn">🔄 Update app</button>
+        <button id="clearDone">🧹 Clear completed</button>
+        <input type="file" id="importFile" accept="application/json" hidden></div>
+        <div class="hint">Your data is stored on this phone${window.OAFsync && window.OAFsync.label() === 'Synced' ? ' and in the cloud' : ' only. Back up now and then'}. Photos, videos and files are not in the backup yet.<br>Version ${APP_VERSION}</div>`;
     } else if (view === 'upcoming') {
       $('#h1').textContent = 'Upcoming';
       $('#sub').textContent = 'What is coming up next';
@@ -568,28 +822,20 @@
           </button>`;
         });
       });
-      html += `<div class="tools">
-        <button id="exportBtn">⬇ Back up</button>
-        <button id="importBtn">⬆ Restore</button>
-        <button id="teamBtn">👥 My team</button>
-        <button id="demoBtn">${Object.values(jobs).some(j => j && j.demo) ? '🧹 Remove sample jobs' : '✨ Add sample jobs'}</button>
-        <button id="cloudBtn">☁️ Cloud · ${window.OAFsync ? window.OAFsync.label() : '…'}</button>
-        <button id="fbBtn">💬 Send feedback</button>
-        <button id="updateBtn">🔄 Update app</button>
-        <button id="clearDone">🧹 Clear completed</button>
-        <input type="file" id="importFile" accept="application/json" hidden>
-      </div><div class="hint">Your tasks are stored on this phone only. Back up now and then. Photos, videos and files stay on this phone and are not in the backup yet.<br>Version ${APP_VERSION}</div>`;
+      html = `<button class="jbtn wide oldbtn" data-act="oldjob">📥 Add a job that's already in progress</button>` + html;
     }
     $('#stats').innerHTML = stats; $('#stats').hidden = !stats;
-    $('#jobbar').hidden = ['upcoming', 'visits', 'job', 'evening'].includes(view);
-    $('#back').hidden = view !== 'job' && view !== 'evening';
-    $('#back').textContent = view === 'evening' ? '‹ Today' : '‹ Projects';
+    const SUBS = ['visits', 'calendar', 'upcoming', 'reports'];
+    $('#jobbar').hidden = !['today', 'projects'].includes(view);
+    $('#back').hidden = !(view === 'job' || view === 'evening' || SUBS.includes(view));
+    $('#back').textContent = view === 'evening' ? '‹ Today' : view === 'job' ? '‹ Jobs' : '‹ More';
     const lateN = visitList().filter(v => v.state === 'late').length;
-    $('#vbadge').textContent = lateN || ''; $('#vbadge').hidden = !lateN;
+    $('#mbadge').textContent = lateN || ''; $('#mbadge').hidden = !lateN;
+    const ldN = leadsDue().length; $('#lbadge').textContent = ldN || ''; $('#lbadge').hidden = !ldN;
     const inPlay = [...new Set(open.map(t => t.project).filter(Boolean))].reduce((a, n) => a + (jobs[n]?.upsell || 0), 0);
     $('#pot').innerHTML = inPlay ? `Upsell potential in play <b>${money(inPlay)}</b>` : 'Add upsell potential to each job';
     $('#main').innerHTML = html;
-    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === (view === 'job' ? 'projects' : view)));
+    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === ({ job: 'projects', visits: 'more', calendar: 'more', upcoming: 'more', reports: 'more', evening: 'today' }[view] || view)));
     const inChat = view === 'job' && jobTab === 'chat';
     $('#composer').hidden = !inChat; $('#chatHead').hidden = !inChat; $('#fab').hidden = view === 'job';
     document.body.classList.toggle('injob', view === 'job');
@@ -767,7 +1013,8 @@
       const people = [...getSubs(j), ...team];
       $('#inWho').innerHTML = people.map(x => `<option>${esc(x.name)}</option>`).join('') + '<option>Customer</option><option>Other</option>';
       $('#inText').value = ''; $('#inBg').classList.add('open'); setTimeout(() => $('#inText').focus(), 60);
-    } else if (a === 'note') {
+    } else if (a === 'import') { openImport(); }
+    else if (a === 'note') {
       const text = $('#chatIn').value.trim(); if (!text) { toast('Type the note first, then tap Note'); return; }
       logMsg(curJob, 'note', text); $('#chatIn').value = ''; autoGrow(); render();
     } else if (a === 'via') {
@@ -828,14 +1075,15 @@
       T('c2', 'Find upsell opportunities with Cohen', C, d(1), { cat: 'visit', ord: 4, star: true, time: '08:00' }),
     ];
     const jb = {
-      [A]: { demo: true, addr: '123 Main St, Palm Springs, CA', upsell: 30000, last: d(-6), kind: 'visit', every: 5, kick: d(-6),
+      [A]: { demo: true, addr: '123 Main St, Palm Springs, CA', upsell: 30000, contract: 24500, soldOn: d(-6),
+        upsells: [{ id: 'demo-u1', title: 'Backsplash', amount: 3200, status: 'won', at: d(-3), wonAt: d(-3) }, { id: 'demo-u2', title: 'Under-cabinet lighting', amount: 1800, status: 'offered', at: d(-1) }, { id: 'demo-u3', title: 'Hallway flooring', amount: 5400, status: 'offered', at: d(-1) }], last: d(-6), kind: 'visit', every: 5, kick: d(-6),
         subs: [{ name: 'Carlos', trade: 'Plumber', phone: '760 555 0101' }, { name: 'Mike', trade: 'Electrician', phone: '760 555 0102' }],
         chat: [{ id: 'demo-m1', at: ago(50), kind: 'out', text: 'Hi team, it\'s ' + (OWNER || 'me') + '. Can you send photos of the current work at Martinez kitchen? Thanks!', to: ['Carlos', 'Mike'] },
                { id: 'demo-m2', at: ago(48), kind: 'in', who: 'Carlos', text: 'Rough-in is done. Sending photos in a bit. Tile arrives Thursday.', star: true },
                { id: 'demo-m3', at: ago(47), kind: 'in', who: 'Mike', text: 'Panel upgrade is scheduled for Friday. Customer asked about adding under-cabinet lighting.' },
                { id: 'demo-m4', at: ago(3), kind: 'out', text: 'Great. Martinez wants a backsplash too. Let\'s price it.' }],
         notes: [{ id: 'demo-n1', at: ago(30), text: 'Customer mentioned she may want new flooring in the hallway.' }] },
-      [B]: { demo: true, addr: '45 Oak Ave, Barstow, CA', upsell: 12000, last: d(-2), kind: 'photos', every: 5, kick: d(-8),
+      [B]: { demo: true, addr: '45 Oak Ave, Barstow, CA', upsell: 12000, contract: 11800, soldOn: d(-8), seller: 'Sam (rep)', last: d(-2), kind: 'photos', every: 5, kick: d(-8),
         subs: [{ name: 'Dave', trade: 'Tile', phone: '760 555 0103' }],
         chat: [{ id: 'demo-m5', at: ago(20), kind: 'in', who: 'Dave', text: 'Shower pan is in. Waiting on the inspector.' }] },
       [C]: { demo: true, addr: '900 Sunset Blvd, San Bernardino, CA', upsell: 45000, kick: d(1), every: 5,
@@ -865,8 +1113,12 @@
     $('#j-kick').value = v || '';
     document.querySelectorAll('#kickChips .chip').forEach(c => c.classList.toggle('on', !!v && addDays(+c.dataset.d) === v));
   }
-  function openJob() {
-    ['#j-name', '#j-sub', '#j-phone', '#j-addr', '#j-upsell'].forEach(i => { $(i).value = ''; $(i).classList.remove('err'); });
+  let jobMode = 'new';
+  function paintMode() { document.querySelectorAll('#j-mode .chip').forEach(c => c.classList.toggle('on', c.dataset.m === jobMode)); $('#j-kickwrap').hidden = jobMode === 'old'; $('#jHelp').textContent = jobMode === 'old' ? 'Adds a job that is already underway. No kickoff checklist. You can paste its WhatsApp chat in right after.' : 'Creates your kickoff checklist (coffee + donuts, photos, DocuSign, sub walkthrough, upsell discovery) plus follow-ups.'; }
+  $('#j-mode').onclick = e => { const c = e.target.closest('[data-m]'); if (c) { jobMode = c.dataset.m; paintMode(); } };
+  function openJob(mode) {
+    jobMode = mode || 'new'; paintMode();
+    ['#j-name', '#j-sub', '#j-phone', '#j-addr', '#j-upsell', '#j-contract'].forEach(i => { $(i).value = ''; $(i).classList.remove('err'); });
     setKick(addDays(1)); $('#j-time').value = '08:00';
     $('#jobBg').classList.add('open'); setTimeout(() => $('#j-addr').focus(), 60);
   }
@@ -876,6 +1128,7 @@
     ['#j-addr', '#j-name'].forEach(i => $(i).classList.remove('err'));
     if (!addrIn) { $('#j-addr').classList.add('err'); $('#j-addr').focus(); toast('Enter the job address'); return; }
     if (!name) { $('#j-name').classList.add('err'); $('#j-name').focus(); toast('Enter the customer name'); return; }
+    if (jobMode === 'old' && jobs[name]) { toast('A job with that name already exists. Add the street or a number to tell them apart.'); return; }
     const kick = $('#j-kick').value || addDays(1), time = $('#j-time').value || '08:00';
     const sub = $('#j-sub').value.trim(), amt = parseInt($('#j-upsell').value.replace(/[^0-9]/g, ''), 10) || 0;
     const newSubs = sub ? [{ name: sub, phone: $('#j-phone').value.trim() }] : [];
@@ -891,12 +1144,15 @@
       [3, 'Upsell follow-up call with ' + name, 'call', true, false],
       [7, 'Progress check before work gets covered up', 'visit', false, false],
     ];
-    plan.forEach(([off, title, cat, star, timed], i) => tasks.push({
+    if (jobMode === 'new') plan.forEach(([off, title, cat, star, timed], i) => tasks.push({
       id: uid(), done: false, title, project: name, due: addDays(off, kick), cat, star, notes: '', ord: i, ...(timed ? { time } : {}),
     }));
-    jobs[name] = { ...(jobs[name] || {}), upsell: amt, subs, sub: undefined, phone: undefined, addr: $('#j-addr').value.trim(), kick, every: jobs[name]?.every || 5 };
-    saveJobs(); save();
-    closeJob(); view = 'today'; filter = 'all'; render(); window.scrollTo(0, 0);
+    const contract = parseInt(($('#j-contract').value || '').replace(/[^0-9]/g, ''), 10) || 0;
+    if (pendingLead) { const l = leads.find(x => x.id === pendingLead); if (l) { l.stage = 'sold'; l.job = name; saveLeads(); } pendingLead = null; }
+    jobs[name] = { ...(jobs[name] || {}), upsell: amt, ...(contract ? { contract, ...(jobMode === 'new' ? { soldOn: todayISO() } : {}) } : {}), subs, sub: undefined, phone: undefined, addr: $('#j-addr').value.trim(), ...(jobMode === 'new' ? { kick } : {}), every: jobs[name]?.every || 5 };
+    saveJobs(); save(); closeJob();
+    if (jobMode === 'old') { curJob = name; jobTab = 'chat'; tabHist = []; chatLimit = 300; view = 'job'; render(); toast('Job added. Tap ＋ then Import WhatsApp chat to bring in the history.'); return; }
+    view = 'today'; filter = 'all'; render(); window.scrollTo(0, 0);
     toast(`${plan.length} tasks created for ${name}`);
   }
   // ---- edit job details ----
@@ -941,7 +1197,7 @@
 
   // ---- events ----
   $('#fab').onclick = () => openSheet(null, view === 'job' ? curJob : '');
-  $('#back').onclick = () => { view = view === 'evening' ? 'today' : 'projects'; render(); window.scrollTo(0, 0); };
+  $('#back').onclick = () => { view = view === 'evening' ? 'today' : view === 'job' ? 'projects' : 'more'; render(); window.scrollTo(0, 0); };
   $('#cancelBtn').onclick = closeSheet;
   $('#saveBtn').onclick = saveSheet;
   $('#bg').onclick = e => { if (e.target.id === 'bg') closeSheet(); };
@@ -989,7 +1245,25 @@
       const act = el.dataset.act;
       if (act === 'collapse') { const p = el.dataset.p; collapsed.has(p) ? collapsed.delete(p) : collapsed.add(p); return render(); }
       if (act === 'addto') return openSheet(null, el.dataset.p);
-      if (act === 'openjob') { curJob = el.dataset.p; jobTab = 'chat'; tabHist = []; chatSearch = false; view = 'job'; render(); return; }
+      if (act === 'openjob') { curJob = el.dataset.p; jobTab = 'chat'; tabHist = []; chatSearch = false; chatLimit = 300; view = 'job'; render(); return; }
+      if (act === 'go') { view = el.dataset.v; filter = 'all'; render(); window.scrollTo(0, 0); return; }
+      if (act === 'oldjob') return openJob('old');
+      if (act === 'lnew') return openLead();
+      if (act === 'lfilter') { leadF = el.dataset.t; return render(); }
+      if (act === 'lcall' || act === 'ltext' || act === 'lgo' || act === 'lsnz' || act === 'lstage' || act === 'ledit') {
+        const l = leads.find(x => x.id === el.closest('.lcard').dataset.id); if (!l) return;
+        if (act === 'lcall') location.href = 'tel:' + cleanPhone(l.phone);
+        else if (act === 'ltext') location.href = smsHref(l.phone, `Hi ${l.name.split(' ')[0]}, it's ${OWNER || 'me'}. `);
+        else if (act === 'lgo') window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(l.addr), '_blank');
+        else if (act === 'lsnz') { l.next = addDays(3, l.next && l.next > todayISO() ? l.next : todayISO()); saveLeads(); render(); toast('Follow up ' + fmtDate(l.next)); }
+        else if (act === 'lstage') { if (l.stage === 'lost') { l.stage = 'new'; saveLeads(); render(); } else if (l.stage === 'sold') toast('Already sold'); else leadStageMenu(l); }
+        else openLead(l.id);
+        return;
+      }
+      if (act === 'older') { chatLimit += 300; const h0 = document.body.scrollHeight; render(); window.scrollTo(0, 0); return; }
+      if (act === 'mper') { moneyPer = el.dataset.t; return render(); }
+      if (act === 'moneyjob') return openMoney(el.dataset.p || curJob);
+      if (act === 'cfgedit') return openCfg();
       if (act === 'demoload') return loadDemo();
       if (act === 'feedback') return openFeedback();
       if (act === 'jtab') return goTab(el.dataset.tab);
@@ -1096,9 +1370,10 @@
   if (location.hash === '#evening') view = 'evening';
   render();
   window.OAF = {
-    getState: () => ({ tasks, jobs, team }),
+    getState: () => ({ tasks, jobs, team, leads, reports, cfg }),
     setState(st) {
-      tasks = st.tasks; jobs = st.jobs; team = st.team;
+      tasks = st.tasks; jobs = st.jobs; team = st.team; leads = st.leads || leads; reports = st.reports || reports; cfg = st.cfg || cfg;
+      try { localStorage.setItem('oaf-leads-v1', JSON.stringify(leads)); localStorage.setItem('oaf-reports-v1', JSON.stringify(reports)); localStorage.setItem('oaf-cfg-v1', JSON.stringify(cfg)); } catch {}
       try { localStorage.setItem(KEY, JSON.stringify(tasks)); localStorage.setItem(JOBS_KEY, JSON.stringify(jobs)); localStorage.setItem(TEAM_KEY, JSON.stringify(team)); } catch {}
       render();
     },

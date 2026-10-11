@@ -34,11 +34,16 @@
       (notes || []).forEach(m => { d[m.id] = { kind: 'note', data: { ...m, job: name } }; });
     });
     (st.team || []).forEach(x => { d['team:' + x.id] = { kind: 'team', data: x }; });
+    (st.leads || []).forEach(l => { d[l.id] = { kind: 'lead', data: l }; });
+    (st.reports || []).forEach(r => { d[r.id] = { kind: 'report', data: r }; });
+    if (st.cfg) d['cfg:main'] = { kind: 'cfg', data: st.cfg };
     return d;
   }
   function applyRow(st, row) {
     const id = row.id, dat = row.data || {}, del = row.deleted;
-    if (row.kind === 'task') { st.tasks = st.tasks.filter(t => t.id !== id); if (!del) st.tasks.push(dat); }
+    if (row.kind === 'lead' || row.kind === 'report') { const key = row.kind === 'lead' ? 'leads' : 'reports'; st[key] = (st[key] || []).filter(x => x.id !== id); if (!del) st[key].push(dat); }
+    else if (row.kind === 'cfg') { if (!del) st.cfg = { ...(st.cfg || {}), ...dat }; }
+    else if (row.kind === 'task') { st.tasks = st.tasks.filter(t => t.id !== id); if (!del) st.tasks.push(dat); }
     else if (row.kind === 'team') { const tid = id.slice(5); st.team = st.team.filter(x => x.id !== tid); if (!del) st.team.push(dat); }
     else if (row.kind === 'job') {
       if (del) return; const { name, ...rest } = dat; if (!name) return;

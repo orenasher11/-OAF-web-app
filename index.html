@@ -9,8 +9,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.svg">
 <title>My Tasks</title>
-<link rel="stylesheet" href="assets/base.css?v=21">
-<link rel="stylesheet" href="assets/theme.css?v=21">
+<link rel="stylesheet" href="assets/base.css?v=23">
+<link rel="stylesheet" href="assets/theme.css?v=23">
 </head>
 <body class="blueprint">
 <div class="app">
@@ -49,6 +49,7 @@
     <button data-a="doc"><i style="background:#e8e4ff">📄</i>Document</button>
     <button data-a="quick"><i style="background:#fff3d6">⚡</i>Quick messages</button>
     <button data-a="photos"><i style="background:#e0f7ef">🙏</i>Ask for photos</button>
+    <button data-a="import"><i style="background:#dff5e6">📥</i>Import WhatsApp chat</button>
     <button data-a="reply"><i style="background:#e3eefc">↙</i>Log a reply</button>
     <button data-a="note"><i style="background:#fff7bf">📝</i>Save as note</button>
     <button data-a="loc"><i style="background:#e0f7ef">📍</i>Job location</button>
@@ -68,9 +69,10 @@
 <div class="toast" id="toast"></div>
 <nav>
   <button data-view="today" class="active"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/><circle cx="12" cy="12" r="9.5"/></svg><span>Today</span></button>
-  <button data-view="upcoming"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span>Upcoming</span></button>
-  <button data-view="visits"><i class="nbadge" id="vbadge" hidden></i><svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0114 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span>Visits</span></button>
-  <button data-view="projects"><svg viewBox="0 0 24 24"><path d="M3.5 7.5a2 2 0 012-2h4l2 2.5h7a2 2 0 012 2v8a2 2 0 01-2 2h-13a2 2 0 01-2-2z"/></svg><span>Projects</span></button>
+  <button data-view="projects"><svg viewBox="0 0 24 24"><path d="M3.5 7.5a2 2 0 012-2h4l2 2.5h7a2 2 0 012 2v8a2 2 0 01-2 2h-13a2 2 0 01-2-2z"/></svg><span>Jobs</span></button>
+  <button data-view="leads"><i class="nbadge" id="lbadge" hidden></i><svg viewBox="0 0 24 24"><path d="M3.5 5h17l-6.5 8v5.5l-4-2V13z"/></svg><span>Leads</span></button>
+  <button data-view="money"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M14.8 9.4c-.5-1-1.5-1.5-2.8-1.5-1.5 0-2.6.8-2.6 2 0 2.9 5.4 1.5 5.4 4.5 0 1.2-1.1 2.1-2.8 2.1-1.3 0-2.4-.5-3-1.6M12 6.3v1.6M12 16.2v1.6"/></svg><span>Money</span></button>
+  <button data-view="more"><i class="nbadge" id="mbadge" hidden></i><svg viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18.5" cy="12" r="1.5"/></svg><span>More</span></button>
 </nav>
 <div class="sheet-bg" id="bg">
   <div class="sheet" role="dialog">
@@ -105,12 +107,13 @@
   <div class="sheet" role="dialog">
     <div class="grab"></div>
     <h2>New job sold</h2>
-    <p class="help">Creates your kickoff checklist (coffee + donuts, photos, DocuSign, sub walkthrough, upsell discovery) plus follow-ups.</p>
+    <div class="chips" id="j-mode" style="margin:2px 0 8px"><button type="button" class="chip on" data-m="new">New sale</button><button type="button" class="chip" data-m="old">Already in progress</button></div>
+    <p class="help" id="jHelp">Creates your kickoff checklist (coffee + donuts, photos, DocuSign, sub walkthrough, upsell discovery) plus follow-ups.</p>
     <label for="j-addr">Job address <i class="req">required</i></label>
     <input id="j-addr" placeholder="e.g. 123 Main St, Palm Springs, CA" autocomplete="off">
     <label for="j-name">Customer / project <i class="req">required</i></label>
     <input id="j-name" placeholder="e.g. Martinez kitchen" autocomplete="off">
-    <label>Kickoff day</label>
+    <div id="j-kickwrap"><label>Kickoff day</label>
     <div class="chips" id="kickChips">
       <button type="button" class="chip" data-d="0">Today</button>
       <button type="button" class="chip" data-d="1">Tomorrow</button>
@@ -119,11 +122,13 @@
     <div class="row2">
       <input type="date" id="j-kick" class="dateinput">
       <input type="time" id="j-time" class="dateinput" value="08:00">
-    </div>
+    </div></div>
     <label for="j-sub">Sub (optional)</label>
     <input id="j-sub" placeholder="e.g. Carlos plumbing" autocomplete="off">
     <label for="j-phone">Sub phone (optional)</label>
     <input id="j-phone" type="tel" inputmode="tel" placeholder="e.g. 760 555 1234" autocomplete="off">
+    <label for="j-contract">Contract value in $ (optional)</label>
+    <input id="j-contract" inputmode="numeric" placeholder="e.g. 24500" autocomplete="off">
     <label for="j-upsell">Upsell potential in $ (optional)</label>
     <input id="j-upsell" inputmode="numeric" placeholder="e.g. 30000" autocomplete="off">
     <div class="actions">
@@ -211,6 +216,68 @@
     <div class="hint">This opens your Messages app with everyone and the text filled in. You tap send.</div>
   </div>
 </div>
+<div class="sheet-bg" id="leadBg">
+  <div class="sheet" role="dialog">
+    <div class="grab"></div>
+    <h2 id="ldTitle">New lead</h2>
+    <label for="l-name">Name</label>
+    <input id="l-name" placeholder="e.g. Maria Lopez" autocomplete="off">
+    <div class="row2"><div><label for="l-phone">Phone</label><input id="l-phone" type="tel" inputmode="tel" placeholder="760 555 1234"></div>
+    <div><label for="l-val">Estimated value $</label><input id="l-val" inputmode="numeric" placeholder="25000"></div></div>
+    <label for="l-addr">Address</label>
+    <input id="l-addr" placeholder="e.g. 123 Main St, Palm Springs, CA" autocomplete="off">
+    <label for="l-src">Where did the lead come from?</label>
+    <input id="l-src" list="srcList" placeholder="Referral, Facebook, Google..." autocomplete="off">
+    <datalist id="srcList"><option value="Referral"><option value="Facebook"><option value="Google"><option value="Door knock"><option value="Rep set it"><option value="Repeat customer"></datalist>
+    <label>Stage</label><div class="chips" id="l-stages"></div>
+    <label>Follow up on</label>
+    <div class="chips" id="l-nchips"><button type="button" class="chip" data-d="0">Today</button><button type="button" class="chip" data-d="1">Tomorrow</button><button type="button" class="chip" data-d="3">In 3 days</button><button type="button" class="chip" data-d="7">Next week</button></div>
+    <input type="date" id="l-next" class="dateinput">
+    <label>Meeting (optional)</label>
+    <div class="row2"><input type="date" id="l-mdate" class="dateinput"><input type="time" id="l-mtime" class="dateinput"></div>
+    <label for="l-rep">Rep handling it</label><select id="l-rep"></select>
+    <label for="l-notes">Notes</label><textarea id="l-notes" placeholder="What do they want? Budget? Timeline?"></textarea>
+    <div class="actions"><button class="btn danger" id="ldDel" hidden>Delete</button><button class="btn ghost" id="ldCancel">Cancel</button><button class="btn primary" id="ldSave">Save</button></div>
+  </div>
+</div>
+<div class="sheet-bg" id="impBg">
+  <div class="sheet" role="dialog">
+    <div class="grab"></div>
+    <h2>Import WhatsApp chat</h2>
+    <p class="help">In WhatsApp, open the group, touch and hold a message, tap <b>Select</b>, choose the messages (or tap the first and scroll), tap <b>Copy</b>. Then paste here. Or choose a chat you exported with <b>Export Chat → Without Media</b>.</p>
+    <textarea id="imp-text" class="msgtext" placeholder="Paste the WhatsApp messages here"></textarea>
+    <label class="filebtn">📄 Choose exported chat file (.txt)<input type="file" id="imp-file" accept=".txt,text/plain" hidden></label>
+    <div id="impSummary"></div>
+    <div class="actions"><button class="btn ghost" id="impCancel">Cancel</button><button class="btn primary" id="impGo" disabled>Import</button></div>
+  </div>
+</div>
+<div class="sheet-bg" id="moneyBg">
+  <div class="sheet" role="dialog">
+    <div class="grab"></div>
+    <h2 id="mnTitle">Contract &amp; upsells</h2>
+    <label for="mn-contract">Contract value ($)</label>
+    <input id="mn-contract" inputmode="numeric" placeholder="e.g. 24500" autocomplete="off">
+    <div class="row2"><div><label for="mn-sold">Sold on</label><input type="date" id="mn-sold" class="dateinput"></div>
+    <div><label for="mn-seller">Sold by</label><select id="mn-seller"></select></div></div>
+    <label>Upsells you offered</label>
+    <div id="upRows"></div>
+    <button type="button" class="chip addsub" id="mnAddUp">＋ Add upsell</button>
+    <div class="actions"><button class="btn ghost" id="mnCancel">Cancel</button><button class="btn primary" id="mnSave">Save</button></div>
+  </div>
+</div>
+<div class="sheet-bg" id="cfgBg">
+  <div class="sheet" role="dialog">
+    <div class="grab"></div>
+    <h2>Rates &amp; goal</h2>
+    <label for="cf-pct">Your commission on jobs you sell and on upsells (%)</label>
+    <input id="cf-pct" inputmode="decimal" placeholder="10">
+    <label for="cf-over">Your override on rep-sold jobs (%)</label>
+    <input id="cf-over" inputmode="decimal" placeholder="1">
+    <label for="cf-goal">Yearly goal ($)</label>
+    <input id="cf-goal" inputmode="numeric" placeholder="500000">
+    <div class="actions"><button class="btn ghost" id="cfgCancel">Cancel</button><button class="btn primary" id="cfgSave">Save</button></div>
+  </div>
+</div>
 <div class="sheet-bg" id="cloudBg">
   <div class="sheet" role="dialog">
     <div class="grab"></div>
@@ -261,7 +328,7 @@
 <script>
 // Safety net: shows a repair bar if the app fails to start or throws an error. Never deletes your saved tasks.
 (function () {
-  var EXPECT = '21', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
+  var EXPECT = '23', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
   function show(t) { try { msg.textContent = t; bar.hidden = false; } catch (e) {} }
   window.__oafNotify = show;
   window.addEventListener('error', function (e) { if (e.message && /ResizeObserver|Script error/.test(e.message)) return; show('Error: ' + (e.message || 'unknown') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
@@ -287,9 +354,9 @@
   }, 3500);
 })();
 </script>
-<script src="assets/config.js?v=21"></script>
+<script src="assets/config.js?v=23"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="assets/app.js?v=21"></script>
-<script src="assets/sync.js?v=21"></script>
+<script src="assets/app.js?v=23"></script>
+<script src="assets/sync.js?v=23"></script>
 </body>
 </html>
