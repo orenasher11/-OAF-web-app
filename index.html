@@ -9,8 +9,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.svg">
 <title>My Tasks</title>
-<link rel="stylesheet" href="assets/base.css?v=31">
-<link rel="stylesheet" href="assets/theme.css?v=31">
+<link rel="stylesheet" href="assets/base.css?v=32">
+<link rel="stylesheet" href="assets/theme.css?v=32">
 </head>
 <body class="blueprint">
 <div class="app">
@@ -73,7 +73,7 @@
 <nav>
   <button data-view="today" class="active"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/><circle cx="12" cy="12" r="9.5"/></svg><span>Today</span></button>
   <button data-view="projects"><svg viewBox="0 0 24 24"><path d="M3.5 7.5a2 2 0 012-2h4l2 2.5h7a2 2 0 012 2v8a2 2 0 01-2 2h-13a2 2 0 01-2-2z"/></svg><span>Jobs</span></button>
-  <button data-view="leads"><i class="nbadge" id="lbadge" hidden></i><svg viewBox="0 0 24 24"><path d="M3.5 5h17l-6.5 8v5.5l-4-2V13z"/></svg><span>Leads</span></button>
+  <button data-view="subs"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 00-5.3 5.1L4.5 16.3a1.8 1.8 0 002.6 2.6l4.9-4.9a4 4 0 005.1-5.3l-2.4 2.4-2.1-.6-.6-2.1z"/></svg><span>Subs</span></button>
   <button data-view="money"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M14.8 9.4c-.5-1-1.5-1.5-2.8-1.5-1.5 0-2.6.8-2.6 2 0 2.9 5.4 1.5 5.4 4.5 0 1.2-1.1 2.1-2.8 2.1-1.3 0-2.4-.5-3-1.6M12 6.3v1.6M12 16.2v1.6"/></svg><span>Money</span></button>
   <button data-view="more"><i class="nbadge" id="mbadge" hidden></i><svg viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18.5" cy="12" r="1.5"/></svg><span>More</span></button>
 </nav>
@@ -385,7 +385,7 @@
 <script>
 // Safety net: shows a repair bar if the app fails to start or throws an error. Never deletes your saved tasks.
 (function () {
-  var EXPECT = '31', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
+  var EXPECT = '32', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
   function show(t) { try { msg.textContent = t; bar.hidden = false; } catch (e) {} }
   window.__oafNotify = show;
   window.addEventListener('error', function (e) { if (e.message && /ResizeObserver|Script error/.test(e.message)) return; show('Error: ' + (e.message || 'unknown') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
@@ -411,9 +411,9 @@
   }, 3500);
 })();
 </script>
-<script src="assets/config.js?v=31"></script>
+<script src="assets/config.js?v=32"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="assets/app.js?v=31"></script>
-<script src="assets/sync.js?v=31"></script>
+<script src="assets/app.js?v=32"></script>
+<script src="assets/sync.js?v=32"></script>
 </body>
 </html>

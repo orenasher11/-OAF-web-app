@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '31';
+  const APP_VERSION = '32';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -1087,7 +1087,7 @@
         ${srow('🚗', 'Site visits', lateV ? `<b class="red">${lateV} overdue</b>` : '', 'go', 'data-v="visits"')}
         ${srow('📅', 'Calendar &amp; routes', '', 'go', 'data-v="calendar"')}
         ${srow('🗓️', 'Upcoming tasks', '', 'go', 'data-v="upcoming"')}
-        ${srow('🧰', 'Contractors by trade', subsDir.length || '', 'go', 'data-v="subs"')}
+        ${srow('☎️', 'Leads pipeline', leadsDue().length ? `<b class="red">${leadsDue().length} to follow up</b>` : '', 'go', 'data-v="leads"')}
         ${srow('🏦', 'Finance companies', '', 'finedit')}
         ${srow('📊', 'Rep reports &amp; scorecards', '', 'go', 'data-v="reports"')}
         ${srow('🌙', 'Evening review', '', 'go', 'data-v="evening"')}</div>
@@ -1181,9 +1181,9 @@
       html = `<button class="jbtn wide oldbtn" data-act="oldjob">📥 Add a job that's already in progress</button>` + html;
     }
     $('#stats').innerHTML = stats; $('#stats').hidden = !stats;
-    const SUBS = ['visits', 'calendar', 'upcoming', 'reports', 'subs'];
+    const SUBS = ['visits', 'calendar', 'upcoming', 'reports', 'leads'];
     $('#jobbar').hidden = !['today', 'projects'].includes(view);
-    $('#back').hidden = !(view === 'job' || view === 'evening' || SUBS.includes(view));
+    $('#back').hidden = !(view === 'job' || view === 'evening' || SUBS.includes(view) || (view === 'subs' && pickJob));
     $('#back').textContent = view === 'evening' ? '‹ Today' : view === 'job' ? '‹ Jobs' : view === 'subs' && pickJob ? '‹ Job' : '‹ More';
     const lateN = visitList().filter(v => v.state === 'late').length;
     $('#mbadge').textContent = lateN || ''; $('#mbadge').hidden = !lateN;
@@ -1191,7 +1191,7 @@
     const inPlay = [...new Set(open.map(t => t.project).filter(Boolean))].reduce((a, n) => a + (jobs[n]?.upsell || 0), 0);
     $('#pot').innerHTML = inPlay ? `Upsell potential in play <b>${money(inPlay)}</b>` : 'Add upsell potential to each job';
     $('#main').innerHTML = html;
-    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === ({ job: 'projects', visits: 'more', calendar: 'more', upcoming: 'more', reports: 'more', subs: 'more', evening: 'today' }[view] || view)));
+    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === ({ job: 'projects', visits: 'more', calendar: 'more', upcoming: 'more', reports: 'more', leads: 'more', subs: 'subs', evening: 'today' }[view] || view)));
     const inChat = view === 'job' && jobTab === 'chat';
     $('#composer').hidden = !inChat; $('#chatHead').hidden = !inChat; $('#fab').hidden = view === 'job';
     document.body.classList.toggle('injob', view === 'job');
