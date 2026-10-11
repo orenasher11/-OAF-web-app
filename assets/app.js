@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '28';
+  const APP_VERSION = '29';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -658,6 +658,24 @@
   };
   function openCfg() { $('#cf-pct').value = cfg.pct; $('#cf-over').value = cfg.override; $('#cf-goal').value = cfg.goal; $('#cfgBg').classList.add('open'); }
 
+  // ---- delete a job for good ----
+  function deleteJobMenu(n) {
+    const j = jobs[n] || {};
+    openPick('Delete ' + (j.addr || n) + '?', [
+      { label: '🗑 Yes, delete it forever', danger: true, fn: () => deleteJob(n) },
+      { label: j.archived ? '↩️ Reopen it instead' : '✅ Mark complete instead (just hides it)', fn: () => { j.archived = !j.archived; saveJobs(); view = 'projects'; render(); } },
+    ]);
+  }
+  function deleteJob(n) {
+    const j = jobs[n] || {};
+    (j.chat || []).forEach(m => (m.attach || []).forEach(a => delFile(a.id)));
+    tasks = tasks.filter(t => t.project !== n);
+    leads.forEach(l => { if (l.job === n) l.job = ''; });
+    delete jobs[n];
+    if (window.OAF) window.OAF.deleteOK = true;
+    save(); saveJobs(); saveLeads();
+    view = 'projects'; tabHist = []; render(); window.scrollTo(0, 0); toast('Job deleted');
+  }
   // ---- job stages ----
   function setStage(n, st) {
     const j = jobs[n] = jobs[n] || {}; if (j.stage === st) return;
@@ -835,6 +853,7 @@
         ${srow('🚗', 'Site check every', (j.every || 5) + ' days', 'editjobd')}
         ${srow('🕒', 'Last site check', j.last ? agoText(j.last) : 'none', 'editjobd')}
         ${srow(j.archived ? '↩️' : '✅', j.archived ? 'Reopen this job' : 'Mark job complete', '', 'archive')}
+        <button class="srow danger" data-act="deljob"><span class="sico">🗑</span><span class="slbl">Delete this job</span></button>
         ${srow('🔗', 'WhatsApp group link', j.wa ? 'Open' : 'Add', j.wa ? 'openwa' : 'editjobd')}
         ${srow('📤', 'Send chat messages via', sendVia === 'wa' ? 'WhatsApp' : 'Messages', 'togvia')}</div>`;
   }
@@ -1036,7 +1055,7 @@
       else if (jobTab === 'starred') html += screenStarred(n);
       else html += screenInfo(n);
     } else {
-      $('#h1').textContent = 'Projects';
+      $('#h1').textContent = 'Jobs';
       const allNames = activeProjects(), names = stageF === 'all' ? allNames : allNames.filter(n => (jobs[n] || {}).stage === stageF);
       if (allNames.length > 1 || stageF !== 'all') {
         const cnt = st => allNames.filter(n => (jobs[n] || {}).stage === st).length;
@@ -1525,6 +1544,7 @@
       if (act === 'addmember') return addMemberMenu(curJob);
       if (act === 'subrow') { if (e.target.closest('.mcall')) return; return subMenu(curJob, +el.dataset.i); }
       if (act === 'addsub') { openEdit(curJob); addSubRow(); return; }
+      if (act === 'deljob') return deleteJobMenu(curJob);
       if (act === 'stagepick') return stageMenu(curJob);
       if (act === 'stagef') { stageF = el.dataset.s; return render(); }
       if (act === 'finrow') return openLoan(curJob, +el.dataset.i);

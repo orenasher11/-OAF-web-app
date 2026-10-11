@@ -46,7 +46,7 @@
     else if (row.kind === 'task') { st.tasks = st.tasks.filter(t => t.id !== id); if (!del) st.tasks.push(dat); }
     else if (row.kind === 'team') { const tid = id.slice(5); st.team = st.team.filter(x => x.id !== tid); if (!del) st.team.push(dat); }
     else if (row.kind === 'job') {
-      if (del) return; const { name, ...rest } = dat; if (!name) return;
+      if (del) { delete st.jobs[id.slice(4)]; return; } const { name, ...rest } = dat; if (!name) return;
       st.jobs[name] = { ...(st.jobs[name] || {}), ...rest };
     } else if (row.kind === 'msg' || row.kind === 'note') {
       const key = row.kind === 'msg' ? 'chat' : 'notes', name = dat.job;
@@ -93,7 +93,7 @@
     Object.entries(docs).forEach(([id, d]) => { const h = hash(d); if (!meta.synced[id] || meta.synced[id].h !== h) rows.push({ workspace_id: ws, id, kind: d.kind, data: d.data, deleted: false, h }); });
     const gone = Object.keys(meta.synced).filter(id => !docs[id]);
     const total = Object.keys(meta.synced).length;
-    const suspicious = gone.length > 20 && gone.length > total * 0.5;
+    const suspicious = gone.length > 20 && gone.length > total * 0.5 && !A.deleteOK;
     if (!suspicious) gone.forEach(id => rows.push({ workspace_id: ws, id, kind: meta.synced[id].k || 'task', data: {}, deleted: true, h: null }));
     for (let i = 0; i < rows.length; i += 200) {
       const chunk = rows.slice(i, i + 200);
@@ -102,6 +102,7 @@
       chunk.forEach(r => { if (r.deleted) delete meta.synced[r.id]; else meta.synced[r.id] = { h: r.h, k: r.kind }; });
       saveMeta();
     }
+    A.deleteOK = false;
     await syncMedia(docs);
   }
   async function syncMedia(docs) {
