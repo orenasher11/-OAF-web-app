@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '34';
+  const APP_VERSION = '35';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -659,7 +659,7 @@
     if (data.stage === 'sold' && !l.job) leadToJob(l);
   };
   function leadToJob(l) {
-    pendingLead = l.id; openJob(); $('#j-addr').value = l.addr || ''; $('#j-name').value = l.name || ''; $('#j-contract').value = l.value || '';
+    pendingLead = l.id; openJob('new'); $('#j-addr').value = l.addr || ''; $('#j-name').value = l.name || ''; $('#j-contract').value = l.value || '';
   }
   function leadStageMenu(l) {
     const items = STAGES.filter(x => x[0] !== l.stage).map(([k, n]) => ({ label: (k === 'sold' ? '✅ ' : k === 'lost' ? '✖ ' : '→ ') + n, danger: k === 'lost', fn: () => { l.stage = k; saveLeads(); render(); if (k === 'sold' && !l.job) leadToJob(l); } }));
@@ -999,6 +999,7 @@
     const todo = all.filter(t => !t.done && t.ord === undefined).sort(cmp), doneT = all.filter(t => t.done && t.ord === undefined);
     const dn = chk.filter(t => t.done).length;
     return sbar(0, 'To-do &amp; checklists', `<button class="spill primary" data-act="addto" data-p="${esc(n)}">＋ Task</button>`) +
+      (!chk.length ? `<div class="roombox dim kickcard"><div class="rtop"><span>📋 No checklist on this job yet</span></div><div class="rsub">Add the standard kickoff checklist: coffee + donuts, site photos, DocuSign, sub walkthrough, upsell discovery, plus follow-ups.</div><button class="jbtn primary wide" data-act="addkick">Add the kickoff checklist</button></div>` : '') +
       (chk.length ? `<div class="ssec">Kickoff checklist · ${dn} of ${chk.length}</div><div class="prog"><i style="width:${Math.round(dn / chk.length * 100)}%"></i></div>` + chk.map(taskHTML).join('') : '') +
       `<div class="ssec">To-do · ${todo.length} open</div>` + (todo.length ? todo.map(taskHTML).join('') : `<div class="empty small">No open to-dos. Tap ＋ Task to add one.</div>`) +
       (doneT.length ? `<div class="ssec">Done · ${doneT.length}</div>` + doneT.map(taskHTML).join('') : '');
@@ -1542,6 +1543,21 @@
     $('#j-kick').value = v || '';
     document.querySelectorAll('#kickChips .chip').forEach(c => c.classList.toggle('on', !!v && addDays(+c.dataset.d) === v));
   }
+  const kickoffPlan = (name, subTxt) => [
+    [0, 'Pick up coffee + donuts, meet ' + subTxt + ' at the site', 'visit', false, true],
+    [0, 'Take photos of the site before work starts', 'visit', false, true],
+    [0, 'Sign ' + name + ' on DocuSign with the finance company', 'money', false, true],
+    [0, 'Walk ' + subTxt + ' through what needs to be done', 'visit', false, true],
+    [0, 'Find upsell opportunities with ' + name, 'visit', true, true],
+    [1, 'Confirm ' + subTxt + ' started, ask for photos', 'call', false, false],
+    [3, 'Upsell follow-up call with ' + name, 'call', true, false],
+    [7, 'Progress check before work gets covered up', 'visit', false, false],
+  ];
+  function addKickoff(n, startOff) {
+    const subs = getSubs(jobs[n]), subTxt = subs.length ? subs.map(x => x.name).join(' & ') : 'the sub', kick = addDays(startOff), time = '08:00';
+    kickoffPlan(n, subTxt).forEach(([off, title, cat, star, timed], i) => tasks.push({ id: uid(), done: false, title, project: n, due: addDays(off, kick), cat, star, notes: '', ord: i, ...(timed ? { time } : {}) }));
+    save(); render(); toast('Kickoff checklist added');
+  }
   let jobMode = 'new';
   function paintMode() { document.querySelectorAll('#j-mode .chip').forEach(c => c.classList.toggle('on', c.dataset.m === jobMode)); $('#j-kickwrap').hidden = jobMode === 'old'; $('#jHelp').textContent = jobMode === 'old' ? 'Adds a job that is already underway. No kickoff checklist. You can paste its WhatsApp chat in right after.' : 'Creates your kickoff checklist (coffee + donuts, photos, DocuSign, sub walkthrough, upsell discovery) plus follow-ups.'; }
   $('#j-mode').onclick = e => { const c = e.target.closest('[data-m]'); if (c) { jobMode = c.dataset.m; paintMode(); $('#j-stage').value = jobMode === 'old' ? 'IN PROGRESS' : 'PRE NTP'; } };
@@ -1563,16 +1579,7 @@
     const newSubs = sub ? [{ name: sub, phone: $('#j-phone').value.trim() }] : [];
     const subs = newSubs.length ? newSubs : getSubs(jobs[name]);
     const subTxt = subs.length ? subs.map(x => x.name).join(' & ') : 'the sub';
-    const plan = [
-      [0, 'Pick up coffee + donuts, meet ' + subTxt + ' at the site', 'visit', false, true],
-      [0, 'Take photos of the site before work starts', 'visit', false, true],
-      [0, 'Sign ' + name + ' on DocuSign with the finance company', 'money', false, true],
-      [0, 'Walk ' + subTxt + ' through what needs to be done', 'visit', false, true],
-      [0, 'Find upsell opportunities with ' + name, 'visit', true, true],
-      [1, 'Confirm ' + subTxt + ' started, ask for photos', 'call', false, false],
-      [3, 'Upsell follow-up call with ' + name, 'call', true, false],
-      [7, 'Progress check before work gets covered up', 'visit', false, false],
-    ];
+    const plan = kickoffPlan(name, subTxt);
     if (jobMode === 'new') plan.forEach(([off, title, cat, star, timed], i) => tasks.push({
       id: uid(), done: false, title, project: name, due: addDays(off, kick), cat, star, notes: '', ord: i, ...(timed ? { time } : {}),
     }));
@@ -1620,7 +1627,7 @@
     saveJobs(); closeEdit(); render();
   };
 
-  $('#newJobBtn').onclick = openJob;
+  $('#newJobBtn').onclick = () => openJob('new');
   $('#jCancel').onclick = closeJob;
   $('#jSave').onclick = saveJob;
   $('#jobBg').onclick = e => { if (e.target.id === 'jobBg') closeJob(); };
@@ -1680,6 +1687,7 @@
       if (act === 'addto') return openSheet(null, el.dataset.p);
       if (act === 'openjob') { curJob = el.dataset.p; jobTab = 'chat'; tabHist = []; chatSearch = false; chatLimit = 300; view = 'job'; render(); return; }
       if (act === 'go') { view = el.dataset.v; filter = 'all'; render(); window.scrollTo(0, 0); return; }
+      if (act === 'addkick') return openPick('Add the kickoff checklist', [{ label: 'Start today', fn: () => addKickoff(curJob, 0) }, { label: 'Start tomorrow at 8:00 AM', fn: () => addKickoff(curJob, 1) }, { label: 'Start in 2 days', fn: () => addKickoff(curJob, 2) }]);
       if (act === 'tscope') { todayScope = el.dataset.t; filter = 'all'; return render(); }
       if (act === 'oldjob') return openJob('old');
       if (act === 'showdone') { showDoneJobs = !showDoneJobs; return render(); }
