@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '32';
+  const APP_VERSION = '33';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -219,10 +219,57 @@
     document.querySelectorAll('img[data-mid],video[data-mid]').forEach(el => { if (!el.src) urlOf(el.dataset.mid).then(u => { if (u) el.src = u; }); });
   }
   function jobMedia(n) { return ((jobs[n] || {}).chat || []).flatMap(x => (x.attach || []).map(a => ({ ...a, at: x.at }))); }
+  // ---- document viewer: PDFs are drawn page by page to fit the screen (iOS cannot scroll PDFs inside a frame) ----
+  let pdfjsP = null, pdfObs = null;
+  const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/';
+  const loadPdfJs = () => pdfjsP ||= new Promise((res, rej) => {
+    if (window.pdfjsLib) return res(window.pdfjsLib);
+    const sc = document.createElement('script'); sc.src = PDFJS + 'pdf.min.js';
+    sc.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js'; res(window.pdfjsLib); };
+    sc.onerror = () => { pdfjsP = null; rej(new Error('Could not load the PDF viewer. Check your connection.')); }; document.head.appendChild(sc);
+  });
+  async function renderPdf(blob, host, token) {
+    const lib = await loadPdfJs(), pdf = await lib.getDocument({ data: await blob.arrayBuffer() }).promise;
+    if (host.dataset.tok !== token) return;
+    host.innerHTML = ''; host.className = 'pdf'; const width = Math.max(240, host.clientWidth - 16), dpr = Math.min(2, window.devicePixelRatio || 1);
+    $('#vTitle').textContent = $('#viewer').dataset.name + (pdf.numPages > 1 ? ` · ${pdf.numPages} pages` : '');
+    if (pdfObs) pdfObs.disconnect();
+    pdfObs = new IntersectionObserver(es => es.forEach(en => {
+      if (!en.isIntersecting || en.target.dataset.done) return; en.target.dataset.done = '1';
+      const c = en.target, n = +c.dataset.n;
+      pdf.getPage(n).then(pg => { const vp = pg.getViewport({ scale: (width / pg.getViewport({ scale: 1 }).width) * dpr }); c.width = vp.width; c.height = vp.height; return pg.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise; })
+        .then(() => c.classList.add('ready')).catch(() => {});
+    }), { root: host, rootMargin: '600px 0px' });
+    for (let i = 1; i <= pdf.numPages; i++) {
+      if (host.dataset.tok !== token) return;
+      const pg = await pdf.getPage(i), v = pg.getViewport({ scale: width / pg.getViewport({ scale: 1 }).width }), c = document.createElement('canvas');
+      c.dataset.n = i; c.style.width = width + 'px'; c.style.height = Math.round(v.height) + 'px'; c.width = 2; c.height = 2; host.appendChild(c); pdfObs.observe(c);
+    }
+  }
+  const extOf = n => (String(n).split('.').pop() || '').toLowerCase();
   async function openViewer(id, name, kind) {
-    const u = await urlOf(id); if (!u) { toast('File not found on this phone'); return; }
-    $('#vBody').innerHTML = kind === 'image' ? `<img src="${u}" alt="">` : kind === 'video' ? `<video src="${u}" controls playsinline autoplay></video>` : `<iframe src="${u}" title="${esc(name)}"></iframe>`;
+    const blob = await blobOf(id); if (!blob) { toast('File not found on this phone'); return; }
+    const u = await urlOf(id), ext = extOf(name), host = $('#vBody'), token = String(Date.now());
+    host.dataset.tok = token; host.className = ''; $('#vTitle').textContent = name || '';
     $('#viewer').dataset.mid = id; $('#viewer').dataset.name = name; $('#viewer').hidden = false;
+    if (kind === 'image') host.innerHTML = `<img src="${u}" alt="">`;
+    else if (kind === 'video') host.innerHTML = `<video src="${u}" controls playsinline autoplay></video>`;
+    else if (ext === 'pdf' || blob.type === 'application/pdf') {
+      host.innerHTML = '<div class="vload">Opening…</div>';
+      try { await renderPdf(blob, host, token); }
+      catch (e) { host.className = ''; host.innerHTML = fileCard(name, blob, `<div class="cerr">${esc(e.message || 'Could not display this PDF here.')}</div>`); }
+    } else if (/^(txt|csv|log|md|json)$/.test(ext) || /^text\//.test(blob.type)) {
+      host.className = 'txt'; host.innerHTML = '<pre></pre>'; host.firstChild.textContent = (await blob.text()).slice(0, 200000);
+    } else host.innerHTML = fileCard(name, blob, '');
+  }
+  const fileCard = (name, blob, extra) => `<div class="vfile"><div class="vficon">${fileIcon(name)}</div><b>${esc(name)}</b><small>${fmtSize(blob.size)}</small>${extra}
+    <button class="vbtn" data-vopen="1">Open</button><div class="vhint">Word, Excel and other office files open in your phone's preview. Use Share / Save to send it to another app.</div></div>`;
+  async function openExternal(id, name) {
+    const b = await blobOf(id); if (!b) return;
+    const typed = new Blob([b], { type: MIMES[extOf(name)] || b.type || 'application/octet-stream' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(typed); a.target = '_blank'; a.rel = 'noopener'; a.download = ''; document.body.appendChild(a);
+    // iOS shows its own preview for known document types; other browsers download the file
+    a.removeAttribute('download'); a.click(); a.remove();
   }
   async function shareFile(id, name) {
     const b = await blobOf(id); if (!b) return;
@@ -1345,7 +1392,8 @@
   $('#fLib').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
   $('#fDoc').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
   $('#tray').onclick = e => { const b = e.target.closest('[data-i]'); if (!b) return; const p = pending.splice(+b.dataset.i, 1)[0]; if (p && p.preview) URL.revokeObjectURL(p.preview); paintTray(); };
-  $('#vClose').onclick = () => { $('#viewer').hidden = true; $('#vBody').innerHTML = ''; };
+  $('#vClose').onclick = () => { $('#viewer').hidden = true; $('#vBody').innerHTML = ''; $('#vBody').dataset.tok = ''; if (pdfObs) pdfObs.disconnect(); };
+  $('#vBody').addEventListener('click', e => { if (e.target.closest('[data-vopen]')) openExternal($('#viewer').dataset.mid, $('#viewer').dataset.name); });
   $('#vShare').onclick = () => shareFile($('#viewer').dataset.mid, $('#viewer').dataset.name);
   $('#cQuick').onclick = () => doAction('quick');
   $('#cBack').onclick = () => { view = 'projects'; tabHist = []; render(); window.scrollTo(0, 0); };
