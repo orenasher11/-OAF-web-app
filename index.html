@@ -9,8 +9,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.svg">
 <title>My Tasks</title>
-<link rel="stylesheet" href="assets/base.css?v=25">
-<link rel="stylesheet" href="assets/theme.css?v=25">
+<link rel="stylesheet" href="assets/base.css?v=26">
+<link rel="stylesheet" href="assets/theme.css?v=26">
 </head>
 <body class="blueprint">
 <div class="app">
@@ -127,6 +127,8 @@
     <input id="j-sub" placeholder="e.g. Carlos plumbing" autocomplete="off">
     <label for="j-phone">Sub phone (optional)</label>
     <input id="j-phone" type="tel" inputmode="tel" placeholder="e.g. 760 555 1234" autocomplete="off">
+    <label for="j-fin">Finance company</label>
+    <select id="j-fin"></select>
     <label for="j-contract">Contract value in $ (optional)</label>
     <input id="j-contract" inputmode="numeric" placeholder="e.g. 24500" autocomplete="off">
     <label for="j-upsell">Upsell potential in $ (optional)</label>
@@ -143,6 +145,10 @@
     <h2 id="eTitle">Job</h2>
     <label for="e-addr">Job address</label>
     <input id="e-addr" placeholder="e.g. 123 Main St, Palm Springs" autocomplete="off">
+    <label for="e-fin">Finance company</label>
+    <select id="e-fin"></select>
+    <label for="e-finst">Finance status</label>
+    <select id="e-finst"></select>
     <label for="e-wa">WhatsApp group link (optional)</label>
     <input id="e-wa" type="url" inputmode="url" placeholder="https://chat.whatsapp.com/..." autocomplete="off">
     <label>Subs on this job</label>
@@ -252,6 +258,15 @@
     <div class="actions"><button class="btn ghost" id="impCancel">Cancel</button><button class="btn primary" id="impGo" disabled>Import</button></div>
   </div>
 </div>
+<div class="sheet-bg" id="finBg">
+  <div class="sheet" role="dialog">
+    <div class="grab"></div>
+    <h2>Finance companies</h2>
+    <p class="help">One per line. These show up when you pick a finance company on a job.</p>
+    <textarea id="fin-list" class="msgtext" style="min-height:220px"></textarea>
+    <div class="actions"><button class="btn ghost" id="finCancel">Cancel</button><button class="btn primary" id="finSave">Save</button></div>
+  </div>
+</div>
 <div class="sheet-bg" id="moneyBg">
   <div class="sheet" role="dialog">
     <div class="grab"></div>
@@ -329,7 +344,7 @@
 <script>
 // Safety net: shows a repair bar if the app fails to start or throws an error. Never deletes your saved tasks.
 (function () {
-  var EXPECT = '25', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
+  var EXPECT = '26', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
   function show(t) { try { msg.textContent = t; bar.hidden = false; } catch (e) {} }
   window.__oafNotify = show;
   window.addEventListener('error', function (e) { if (e.message && /ResizeObserver|Script error/.test(e.message)) return; show('Error: ' + (e.message || 'unknown') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
@@ -355,9 +370,9 @@
   }, 3500);
 })();
 </script>
-<script src="assets/config.js?v=25"></script>
+<script src="assets/config.js?v=26"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="assets/app.js?v=25"></script>
-<script src="assets/sync.js?v=25"></script>
+<script src="assets/app.js?v=26"></script>
+<script src="assets/sync.js?v=26"></script>
 </body>
 </html>

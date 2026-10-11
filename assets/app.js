@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '25';
+  const APP_VERSION = '26';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -25,8 +25,14 @@
   if (!OWNER && tasks.length) OWNER = 'Oren';   // existing installs keep the original name
   const changed = () => { try { window.OAF && window.OAF.onChange && window.OAF.onChange(); } catch {} };
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(tasks)); } catch {} changed(); };
-  let cfg = { pct: 10, override: 1, goal: 500000 };
+  const FIN_DEFAULT = ['Homerun', 'Aqua', 'Renew', 'Figure', 'HFS', 'Acorn', 'Jason', 'Limor', 'Cash'];
+  const FIN_STATUS = ['Not started', 'Applied', 'Approved', 'Docs signed', 'Funded', 'Declined'];
+  const BOTS = [{ name: 'Job Assistant', role: 'AI bot · coming soon' }];
+  let cfg = { pct: 10, override: 1, goal: 500000, finance: FIN_DEFAULT.slice() };
   try { cfg = { ...cfg, ...(JSON.parse(localStorage.getItem('oaf-cfg-v1')) || {}) }; } catch {}
+  const finList = () => (cfg.finance && cfg.finance.length ? cfg.finance : FIN_DEFAULT);
+  const finOptions = sel => ['<option value="">Not set</option>', ...[...new Set([...finList(), ...(sel && !finList().includes(sel) ? [sel] : [])])].map(f => `<option ${f === sel ? 'selected' : ''}>${esc(f)}</option>`)].join('');
+  const finStatusOptions = sel => ['<option value="">No status</option>', ...FIN_STATUS.map(f => `<option ${f === sel ? 'selected' : ''}>${esc(f)}</option>`)].join('');
   const saveCfg = () => { try { localStorage.setItem('oaf-cfg-v1', JSON.stringify(cfg)); } catch {} changed(); };
   let leads = [], reports = [], moneyPer = 'month';
   try { leads = JSON.parse(localStorage.getItem('oaf-leads-v1')) || []; } catch {}
@@ -77,6 +83,7 @@
     const L = [`${n}${j.addr ? ' - ' + j.addr : ''}`];
     if (subs.length) L.push('Subs: ' + subs.map(subLabel).join(', '));
     if (j.upsell) L.push('Upsell potential: ' + money(j.upsell));
+    if (j.finance) L.push('Financing: ' + j.finance + (j.finStatus ? ' · ' + j.finStatus : ''));
     L.push('', late.length ? `⚠ ${late.length} overdue ${late.length === 1 ? 'task' : 'tasks'}` : '✓ Nothing overdue');
     L.push('Site check: ' + (j.last ? `last ${j.kind === 'photos' ? 'photos' : 'on-site visit'} ${agoText(j.last).toLowerCase()}` : 'none logged') + ` (${nextText(v).toLowerCase()})`);
     L.push('', `Open tasks (${mine.length}):`);
@@ -137,8 +144,8 @@
   // ---- job chat (WhatsApp-style thread) ----
   function groupMembers(n) {
     const j = jobs[n] || {};
-    const all = [...getSubs(j), ...team].filter(x => hasPhone(x.phone));
-    return j.group ? all.filter(x => j.group.includes(cleanPhone(x.phone))) : getSubs(j).filter(x => hasPhone(x.phone));
+    const all = [...membersOf(n), ...getSubs(j)].filter(x => hasPhone(x.phone));
+    return j.group ? [...team, ...getSubs(j)].filter(x => hasPhone(x.phone) && j.group.includes(cleanPhone(x.phone))) : membersOf(n).filter(x => hasPhone(x.phone));
   }
   function logMsg(n, kind, text, extra = {}) {
     const j = jobs[n] = jobs[n] || {};
@@ -255,8 +262,8 @@
   function paintChatHead() {
     const n = curJob, j = jobs[n] || {};
     $('#cName').textContent = j.addr || n;
-    const names = [...new Set([...getSubs(j), ...team].map(x => x.name))];
-    $('#cMembers').textContent = [...names, 'You'].join(', ');
+    const names = [...new Set(membersOf(n).map(x => x.name))];
+    $('#cMembers').textContent = [...names, ...BOTS.map(b => '🤖 ' + b.name), 'You'].join(', ');
     $('#cTaskN').textContent = tasks.filter(t => !t.done && t.project === n).length || '';
     $('#apVia').lastChild.textContent = sendVia === 'wa' ? 'Sending via WhatsApp' : 'Sending via Messages';
   }
@@ -503,6 +510,9 @@
         <div class="prog"><i style="width:${pct}%"></i></div>
         <div class="gnote">At this pace you finish the year at <b>${money0(pace)}</b>${cfg.goal && pace < cfg.goal ? ` (${money0(cfg.goal - pace)} short)` : cfg.goal ? ' 🎉' : ''}</div>
         <button class="spill" data-act="cfgedit">⚙ Rates &amp; goal</button></div>
+      ${(() => { const fm = {}; Object.values(jobs).forEach(j => { if (j && j.contract && inR(j.soldOn, range)) { const k = j.finance || 'Not set'; (fm[k] ||= { n: 0, v: 0 }); fm[k].n++; fm[k].v += j.contract; } });
+        const rows = Object.entries(fm).sort((a, b) => b[1].v - a[1].v);
+        return rows.length ? `<div class="ssec">By finance company</div><div class="scard">${rows.map(([k, x]) => `<div class="mrow"><span class="sico">🏦</span><span class="mbody"><b>${esc(k)}</b><small>${x.n} ${x.n === 1 ? 'job' : 'jobs'}</small></span><b>${money0(x.v)}</b></div>`).join('')}</div>` : ''; })()}
       <div class="ssec">Jobs</div>
       <div class="scard">${list.length ? list.map(jr).join('') : '<div class="empty small">No contracts entered yet. Tap a job below to add one.</div>'}
         ${noCon.map(([n, j]) => `<button class="srow" data-act="moneyjob" data-p="${esc(n)}"><span class="sico">➕</span><span class="slbl"><b>${esc(j.addr || n)}</b><small>${esc(n)}</small></span><span class="sval">Add $</span><span class="schev">›</span></button>`).join('')}</div>`;
@@ -617,16 +627,57 @@
   };
   function openCfg() { $('#cf-pct').value = cfg.pct; $('#cf-over').value = cfg.override; $('#cf-goal').value = cfg.goal; $('#cfgBg').classList.add('open'); }
 
+  // ---- finance company per job ----
+  function finStatusMenu(n) {
+    const j = jobs[n] = jobs[n] || {};
+    openPick('Finance status · ' + (j.finance || ''), FIN_STATUS.map(f => ({ label: (j.finStatus === f ? '✓ ' : '') + f, fn: () => { j.finStatus = f; saveJobs(); render(); } })));
+  }
+  function finCompMenu(n) {
+    const j = jobs[n] = jobs[n] || {};
+    const items = finList().map(f => ({ label: (j.finance === f ? '✓ ' : '') + f, fn: () => { j.finance = f; if (f === 'Cash') j.finStatus = ''; saveJobs(); render(); if (f !== 'Cash') setTimeout(() => finStatusMenu(n), 120); } }));
+    if (j.finance) items.push({ label: 'Clear', danger: true, fn: () => { j.finance = ''; j.finStatus = ''; saveJobs(); render(); } });
+    items.push({ label: '✎ Edit the list of finance companies', fn: openFin });
+    openPick('Which finance company?', items);
+  }
+  function openFin() { $('#fin-list').value = finList().join('\n'); $('#finBg').classList.add('open'); }
+  $('#finCancel').onclick = () => $('#finBg').classList.remove('open');
+  $('#finBg').onclick = e => { if (e.target.id === 'finBg') $('#finBg').classList.remove('open'); };
+  $('#finSave').onclick = () => {
+    cfg.finance = [...new Set($('#fin-list').value.split('\n').map(x => x.trim()).filter(Boolean))];
+    if (!cfg.finance.length) cfg.finance = FIN_DEFAULT.slice();
+    saveCfg(); $('#finBg').classList.remove('open'); render(); toast('Finance list saved');
+  };
+  // ---- subs directory (every sub across all jobs) ----
+  function subDirectory() {
+    const m = new Map();
+    Object.entries(jobs).forEach(([n, j]) => getSubs(j).forEach(x => {
+      const key = (x.name || '').trim().toLowerCase() + '|' + String(x.phone || '').replace(/\D/g, '');
+      const e = m.get(key) || { name: x.name, trade: x.trade || '', phone: x.phone || '', jobs: [] };
+      if (!e.trade && x.trade) e.trade = x.trade; if (!e.phone && x.phone) e.phone = x.phone;
+      e.jobs.push(n); m.set(key, e);
+    }));
+    return [...m.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+  function screenSubs() {
+    const list = subDirectory();
+    return `<div class="schat"><input id="subq" placeholder="Search subs by name or trade" autocomplete="off"></div>` + (list.length ? `<div class="scard" id="subList">` + list.map((x, i) => `<div class="mrow" data-act="subdir" data-i="${i}" data-q="${esc((x.name + ' ' + x.trade).toLowerCase())}"><span class="mav sq" style="background:${nameColor(x.name)}">🔧</span><span class="mbody"><b>${esc(x.name)}</b><small>${esc(x.trade || 'Sub')} · ${x.jobs.length} ${x.jobs.length === 1 ? 'job' : 'jobs'}${x.phone ? ' · ' + esc(x.phone) : ''}</small></span>${hasPhone(x.phone) ? `<a class="mcall" href="tel:${esc(cleanPhone(x.phone))}" aria-label="Call">📞</a>` : ''}</div>`).join('') + `</div>`
+      : `<div class="empty small"><div class="big">🔧</div>No subs yet. Add subs to a job (Edit job, or the Subs section on its info screen) and they show up here.</div>`);
+  }
+  function subDirMenu(i) {
+    const x = subDirectory()[i]; if (!x) return;
+    personMenu({ ...x, role: x.trade || 'Sub' }, x.jobs.slice(0, 6).map(n => ({ label: '📁 ' + (jobs[n] && jobs[n].addr ? jobs[n].addr : n), fn: () => { curJob = n; jobTab = 'chat'; tabHist = []; view = 'job'; render(); } })));
+  }
+
   // ---- WhatsApp-style group info screens ----
   let tabHist = [], mediaTab = 'media', chatSearch = false, pendingJump = null;
   const waNum = p => { const d = String(p || '').replace(/\D/g, ''); return d.length === 10 ? '1' + d : d; };
   function goTab(t) { if (t !== jobTab) tabHist.push(jobTab); jobTab = t; chatSearch = false; render(); window.scrollTo(0, 0); }
   function backTab() { jobTab = tabHist.pop() || 'chat'; chatSearch = false; render(); if (jobTab !== 'chat') window.scrollTo(0, 0); }
   function defaultGroupPhones(j) { return getSubs(j).filter(x => hasPhone(x.phone)).map(x => cleanPhone(x.phone)); }
+  // group members = you + your partners/reps from My team (+ AI bots). Subs are listed separately.
   function membersOf(n) {
-    const j = jobs[n] || {}, g = j.group;
-    return [...getSubs(j).map(x => ({ ...x, role: x.trade || 'Sub', kind: 'sub' })),
-            ...team.filter(x => g && g.includes(cleanPhone(x.phone))).map(x => ({ ...x, kind: 'team' }))];
+    const excl = (jobs[n] || {}).excl || [];
+    return team.filter(x => !excl.includes(x.id)).map(x => ({ ...x, kind: 'team' }));
   }
   function openPick(title, items) {
     $('#pickTitle').textContent = title;
@@ -636,26 +687,31 @@
   }
   const label2 = x => `${x.name}${x.role ? ' · ' + x.role : ''}`;
   function callPeople(n) {
-    const m = membersOf(n).filter(x => hasPhone(x.phone));
-    if (!m.length) { toast('Add a phone number first (Edit job)'); return; }
+    const m = [...membersOf(n), ...getSubs(jobs[n]).map(x => ({ ...x, role: x.trade || 'Sub', kind: 'sub' }))].filter(x => hasPhone(x.phone));
+    if (!m.length) { toast('Add a phone number first (Edit job, or My team in More)'); return; }
     if (m.length === 1) { location.href = 'tel:' + cleanPhone(m[0].phone); return; }
     openPick('Who do you want to call?', m.map(x => ({ label: '📞 ' + label2(x), fn: () => { location.href = 'tel:' + cleanPhone(x.phone); } })));
   }
-  function memberMenu(n, i) {
-    const x = membersOf(n)[i]; if (!x) return; const ok = hasPhone(x.phone), j = jobs[n] = jobs[n] || {};
+  function personMenu(x, extra = []) {
     const items = [];
-    if (ok) items.push({ label: '📞 Call ' + x.name, fn: () => { location.href = 'tel:' + cleanPhone(x.phone); } },
+    if (hasPhone(x.phone)) items.push({ label: '📞 Call ' + x.name, fn: () => { location.href = 'tel:' + cleanPhone(x.phone); } },
       { label: '💬 Text ' + x.name, fn: () => { location.href = smsHref(x.phone, ''); } },
       { label: '🟢 WhatsApp ' + x.name, fn: () => { location.href = 'https://wa.me/' + waNum(x.phone); } });
-    else items.push({ label: 'No phone number saved', fn: () => openEdit(n) });
-    if (x.kind === 'team') items.push({ label: 'Remove from this group', danger: true, fn: () => { j.group = (j.group || defaultGroupPhones(j)).filter(p => p !== cleanPhone(x.phone)); saveJobs(); render(); } });
-    else items.push({ label: '✎ Edit in job details', fn: () => openEdit(n) });
-    openPick(label2(x), items);
+    else items.push({ label: 'No phone number saved', fn: () => {} });
+    openPick(label2(x), [...items, ...extra]);
+  }
+  function memberMenu(n, i) {
+    const x = membersOf(n)[i]; if (!x) return; const j = jobs[n] = jobs[n] || {};
+    personMenu(x, [{ label: 'Remove from this job group', danger: true, fn: () => { j.excl = [...(j.excl || []), x.id]; saveJobs(); render(); } }]);
+  }
+  function subMenu(n, i) {
+    const x = getSubs(jobs[n])[i]; if (!x) return;
+    personMenu({ ...x, role: x.trade || 'Sub' }, [{ label: '✎ Edit subs on this job', fn: () => openEdit(n) }]);
   }
   function addMemberMenu(n) {
-    const j = jobs[n] = jobs[n] || {}, inG = j.group || defaultGroupPhones(j);
-    const items = team.filter(x => hasPhone(x.phone) && !inG.includes(cleanPhone(x.phone))).map(x => ({ label: '＋ ' + label2(x), fn: () => { j.group = [...(j.group || defaultGroupPhones(j)), cleanPhone(x.phone)]; saveJobs(); render(); toast(x.name + ' added'); } }));
-    items.push({ label: '＋ New sub or person…', fn: () => { openEdit(n); addSubRow(); } }, { label: '👥 Manage my team', fn: () => { teamFromMsg = false; openTeam(); } });
+    const j = jobs[n] = jobs[n] || {}, out = team.filter(x => (j.excl || []).includes(x.id));
+    const items = out.map(x => ({ label: '＋ Add back ' + label2(x), fn: () => { j.excl = (j.excl || []).filter(id => id !== x.id); saveJobs(); render(); toast(x.name + ' added'); } }));
+    items.push({ label: '＋ New partner or sales rep…', fn: () => { teamFromMsg = false; openTeam(); addTeamRow({ role: 'Sales rep' }); } });
     openPick('Add to this group', items);
   }
   const findMsg = (id, k) => { const j = jobs[curJob] || {}; return (k === 'note' ? (j.notes || []) : (j.chat || [])).find(x => x.id === id); };
@@ -677,13 +733,13 @@
   const sbar = (back, title, right = '') => `<div class="sbar"><button class="sback" data-act="back" aria-label="Back">‹</button><div class="stitle">${title}</div><div class="sright">${right}</div></div>`;
   const srow = (icon, label, val, act, extra = '') => `<button class="srow" data-act="${act}" ${extra}><span class="sico">${icon}</span><span class="slbl">${label}</span><span class="sval">${val}</span><span class="schev">›</span></button>`;
   function screenInfo(n) {
-    const j = jobs[n] || {}, mem = membersOf(n), media = jobMedia(n), starred = timeline(n).filter(x => x.star && x.kind !== 'sys').length;
+    const j = jobs[n] || {}, mem = membersOf(n), subsL = getSubs(j), media = jobMedia(n), starred = timeline(n).filter(x => x.star && x.kind !== 'sys').length;
     const openN = tasks.filter(t => !t.done && t.project === n).length, links = linksOf(n).length;
     const avatar = x => `<span class="mav" style="background:${nameColor(x.name)}">${esc((x.name || '?').trim()[0].toUpperCase())}</span>`;
     return `<div class="sbar"><button class="sback" data-act="back" aria-label="Back">‹</button><div class="sright"><button class="spill" data-act="editjobd">✎ Edit</button></div></div>
       <div class="ginfo"><div class="gavatar"><svg viewBox="0 0 24 24" width="54" height="54" fill="currentColor"><path d="M16 11a3 3 0 100-6 3 3 0 000 6zM8 11a3 3 0 100-6 3 3 0 000 6zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></div>
         <h2 class="gtitle">${esc(j.addr || n)}</h2>
-        <div class="gsub">Group · <b>${mem.length + 1} members</b></div>
+        <div class="gsub">Group · <b>${mem.length + 1 + BOTS.length} members</b></div>
         <div class="gsub2">${esc(n)}</div></div>
       <div class="gactions">
         <button data-act="callall"><i>📞</i>Call</button>
@@ -695,11 +751,17 @@
         ${srow('⭐', 'Starred messages', starred, 'jtab', 'data-tab="starred"')}
         ${srow('✅', 'To-do &amp; checklists', openN ? openN + ' open' : '✓', 'jtab', 'data-tab="tasks"')}
         ${srow('💵', 'Contract &amp; upsells', j.contract ? money0(j.contract) : 'Add', 'moneyjob', `data-p="${esc(n)}"`)}
+        ${srow('🏦', 'Finance company', j.finance ? esc(j.finance) : 'Choose', 'fincomp')}
+        ${j.finance && j.finance !== 'Cash' ? srow('📋', 'Finance status', j.finStatus ? esc(j.finStatus) : 'Set', 'finstat') : ''}
         ${srow('📝', 'Job summary', '', 'summary')}</div>
-      <div class="ssec">${mem.length + 1} members</div><div class="scard">
+      <div class="ssec">${mem.length + 1 + BOTS.length} members</div><div class="scard">
         <div class="mrow me">${`<span class="mav" style="background:#0f2747">${esc((OWNER || 'Y')[0])}</span>`}<span class="mbody"><b>${esc(OWNER || 'You')}</b><small>You</small></span></div>
         ${mem.map((x, i) => `<div class="mrow" data-act="member" data-i="${i}">${avatar(x)}<span class="mbody"><b>${esc(x.name)}</b><small>${esc(x.role || '')}${x.phone ? ' · ' + esc(x.phone) : ' · no phone'}</small></span>${hasPhone(x.phone) ? `<a class="mcall" href="tel:${esc(cleanPhone(x.phone))}" aria-label="Call">📞</a>` : ''}</div>`).join('')}
-        <button class="srow addm" data-act="addmember"><span class="sico">＋</span><span class="slbl">Add member</span></button></div>
+        ${BOTS.map(b => `<div class="mrow"><span class="mav" style="background:#ff6a1a">🤖</span><span class="mbody"><b>${esc(b.name)}</b><small>${esc(b.role)}</small></span></div>`).join('')}
+        <button class="srow addm" data-act="addmember"><span class="sico">＋</span><span class="slbl">Add partner or rep</span></button></div>
+      <div class="ssec">${subsL.length} ${subsL.length === 1 ? 'sub' : 'subs'} on this job</div><div class="scard">
+        ${subsL.map((x, i) => `<div class="mrow" data-act="subrow" data-i="${i}"><span class="mav sq" style="background:${nameColor(x.name)}">🔧</span><span class="mbody"><b>${esc(x.name)}</b><small>${esc(x.trade || 'Sub')}${x.phone ? ' · ' + esc(x.phone) : ' · no phone'}</small></span>${hasPhone(x.phone) ? `<a class="mcall" href="tel:${esc(cleanPhone(x.phone))}" aria-label="Call">📞</a>` : ''}</div>`).join('')}
+        <button class="srow addm" data-act="addsub"><span class="sico">＋</span><span class="slbl">Add sub</span></button></div>
       <div class="ssec">Job settings</div><div class="scard">
         ${srow('💰', 'Upsell potential', j.upsell ? money(j.upsell) : 'Set', 'upsell', `data-p="${esc(n)}"`)}
         ${srow('🚗', 'Site check every', (j.every || 5) + ' days', 'editjobd')}
@@ -835,6 +897,9 @@
       const dueN = leadsDue().length;
       $('#h1').textContent = 'Leads'; $('#sub').textContent = dueN ? `${dueN} to follow up today` : 'Your pipeline';
       html += screenLeads();
+    } else if (view === 'subs') {
+      $('#h1').textContent = 'Subs'; $('#sub').textContent = 'Everyone you work with across all jobs';
+      html += screenSubs();
     } else if (view === 'money') {
       $('#h1').textContent = 'Money'; $('#sub').textContent = 'Commissions, overrides and upsells';
       html += screenMoney();
@@ -845,6 +910,8 @@
         ${srow('🚗', 'Site visits', lateV ? `<b class="red">${lateV} overdue</b>` : '', 'go', 'data-v="visits"')}
         ${srow('📅', 'Calendar &amp; routes', '', 'go', 'data-v="calendar"')}
         ${srow('🗓️', 'Upcoming tasks', '', 'go', 'data-v="upcoming"')}
+        ${srow('🔧', 'Subs directory', subDirectory().length || '', 'go', 'data-v="subs"')}
+        ${srow('🏦', 'Finance companies', '', 'finedit')}
         ${srow('📊', 'Rep reports &amp; scorecards', '', 'go', 'data-v="reports"')}
         ${srow('🌙', 'Evening review', '', 'go', 'data-v="evening"')}</div>
         <div class="ssec">Settings</div><div class="tools">
@@ -918,7 +985,7 @@
               <span class="faddr ${j.addr ? '' : 'none'}">${esc(j.addr || 'No address yet')}</span>
               <span class="fclient">${esc(n)}</span>
               ${getSubs(j).length ? `<span class="subchips">${subChips(j)}</span>` : ''}
-              <span class="fmeta">${mine.length} open${late ? ` · <em>${late} late</em>` : nxt && nxt.due ? ' · next ' + fmtDate(nxt.due) : ''}</span>
+              <span class="fmeta">${mine.length} open${late ? ` · <em>${late} late</em>` : nxt && nxt.due ? ' · next ' + fmtDate(nxt.due) : ''}${j.finance ? ` · <span class="fintag">🏦 ${esc(j.finance)}${j.finStatus ? ' · ' + esc(j.finStatus) : ''}</span>` : ''}</span>
             </span>
             <span class="fright">${j.upsell ? `<span class="pup set">${money(j.upsell)}</span>` : ''}<i>›</i></span>
           </button>`;
@@ -932,7 +999,7 @@
       html = `<button class="jbtn wide oldbtn" data-act="oldjob">📥 Add a job that's already in progress</button>` + html;
     }
     $('#stats').innerHTML = stats; $('#stats').hidden = !stats;
-    const SUBS = ['visits', 'calendar', 'upcoming', 'reports'];
+    const SUBS = ['visits', 'calendar', 'upcoming', 'reports', 'subs'];
     $('#jobbar').hidden = !['today', 'projects'].includes(view);
     $('#back').hidden = !(view === 'job' || view === 'evening' || SUBS.includes(view));
     $('#back').textContent = view === 'evening' ? '‹ Today' : view === 'job' ? '‹ Jobs' : '‹ More';
@@ -942,7 +1009,7 @@
     const inPlay = [...new Set(open.map(t => t.project).filter(Boolean))].reduce((a, n) => a + (jobs[n]?.upsell || 0), 0);
     $('#pot').innerHTML = inPlay ? `Upsell potential in play <b>${money(inPlay)}</b>` : 'Add upsell potential to each job';
     $('#main').innerHTML = html;
-    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === ({ job: 'projects', visits: 'more', calendar: 'more', upcoming: 'more', reports: 'more', evening: 'today' }[view] || view)));
+    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === ({ job: 'projects', visits: 'more', calendar: 'more', upcoming: 'more', reports: 'more', subs: 'more', evening: 'today' }[view] || view)));
     const inChat = view === 'job' && jobTab === 'chat';
     $('#composer').hidden = !inChat; $('#chatHead').hidden = !inChat; $('#fab').hidden = view === 'job';
     document.body.classList.toggle('injob', view === 'job');
@@ -1146,6 +1213,7 @@
   function pressStart(e) { const b = bubOf(e); if (!b) return; pressed = false; clearTimeout(pressTimer); pressTimer = setTimeout(() => { pressed = true; msgMenu(b.dataset.id, b.dataset.k); }, 550); }
   const pressEnd = () => clearTimeout(pressTimer);
   $('#main').addEventListener('input', e => {
+    if (e.target.id === 'subq') { const q = e.target.value.trim().toLowerCase(); document.querySelectorAll('#subList .mrow').forEach(r => { r.style.display = !q || r.dataset.q.includes(q) ? '' : 'none'; }); return; }
     if (e.target.id !== 'sq') return; const q = e.target.value.trim().toLowerCase();
     document.querySelectorAll('.bub').forEach(b => { b.style.display = !q || b.textContent.toLowerCase().includes(q) ? '' : 'none'; });
   });
@@ -1182,7 +1250,7 @@
       T('c2', 'Find upsell opportunities with Cohen', C, d(1), { cat: 'visit', ord: 4, star: true, time: '08:00' }),
     ];
     const jb = {
-      [A]: { demo: true, addr: '123 Main St, Palm Springs, CA', upsell: 30000, contract: 24500, soldOn: d(-6),
+      [A]: { demo: true, finance: 'Aqua', finStatus: 'Approved', addr: '123 Main St, Palm Springs, CA', upsell: 30000, contract: 24500, soldOn: d(-6),
         upsells: [{ id: 'demo-u1', title: 'Backsplash', amount: 3200, status: 'won', at: d(-3), wonAt: d(-3) }, { id: 'demo-u2', title: 'Under-cabinet lighting', amount: 1800, status: 'offered', at: d(-1) }, { id: 'demo-u3', title: 'Hallway flooring', amount: 5400, status: 'offered', at: d(-1) }], last: d(-6), kind: 'visit', every: 5, kick: d(-6),
         subs: [{ name: 'Carlos', trade: 'Plumber', phone: '760 555 0101' }, { name: 'Mike', trade: 'Electrician', phone: '760 555 0102' }],
         chat: [{ id: 'demo-m1', at: ago(50), kind: 'out', text: 'Hi team, it\'s ' + (OWNER || 'me') + '. Can you send photos of the current work at Martinez kitchen? Thanks!', to: ['Carlos', 'Mike'] },
@@ -1190,10 +1258,10 @@
                { id: 'demo-m3', at: ago(47), kind: 'in', who: 'Mike', text: 'Panel upgrade is scheduled for Friday. Customer asked about adding under-cabinet lighting.' },
                { id: 'demo-m4', at: ago(3), kind: 'out', text: 'Great. Martinez wants a backsplash too. Let\'s price it.' }],
         notes: [{ id: 'demo-n1', at: ago(30), text: 'Customer mentioned she may want new flooring in the hallway.' }] },
-      [B]: { demo: true, addr: '45 Oak Ave, Barstow, CA', upsell: 12000, contract: 11800, soldOn: d(-8), seller: 'Sam (rep)', last: d(-2), kind: 'photos', every: 5, kick: d(-8),
+      [B]: { demo: true, finance: 'Cash', addr: '45 Oak Ave, Barstow, CA', upsell: 12000, contract: 11800, soldOn: d(-8), seller: 'Sam (rep)', last: d(-2), kind: 'photos', every: 5, kick: d(-8),
         subs: [{ name: 'Dave', trade: 'Tile', phone: '760 555 0103' }],
         chat: [{ id: 'demo-m5', at: ago(20), kind: 'in', who: 'Dave', text: 'Shower pan is in. Waiting on the inspector.' }] },
-      [C]: { demo: true, addr: '900 Sunset Blvd, San Bernardino, CA', upsell: 45000, kick: d(1), every: 5,
+      [C]: { demo: true, finance: 'Homerun', finStatus: 'Applied', addr: '900 Sunset Blvd, San Bernardino, CA', upsell: 45000, kick: d(1), every: 5,
         subs: [{ name: 'Tony', trade: 'General', phone: '909 555 0104' }], chat: [] },
     };
     tasks = [...tasks.filter(x => !x.demo), ...t]; Object.assign(jobs, jb);
@@ -1224,7 +1292,7 @@
   function paintMode() { document.querySelectorAll('#j-mode .chip').forEach(c => c.classList.toggle('on', c.dataset.m === jobMode)); $('#j-kickwrap').hidden = jobMode === 'old'; $('#jHelp').textContent = jobMode === 'old' ? 'Adds a job that is already underway. No kickoff checklist. You can paste its WhatsApp chat in right after.' : 'Creates your kickoff checklist (coffee + donuts, photos, DocuSign, sub walkthrough, upsell discovery) plus follow-ups.'; }
   $('#j-mode').onclick = e => { const c = e.target.closest('[data-m]'); if (c) { jobMode = c.dataset.m; paintMode(); } };
   function openJob(mode) {
-    jobMode = mode || 'new'; paintMode();
+    jobMode = mode || 'new'; paintMode(); $('#j-fin').innerHTML = finOptions('');
     ['#j-name', '#j-sub', '#j-phone', '#j-addr', '#j-upsell', '#j-contract'].forEach(i => { $(i).value = ''; $(i).classList.remove('err'); });
     setKick(addDays(1)); $('#j-time').value = '08:00';
     $('#jobBg').classList.add('open'); setTimeout(() => $('#j-addr').focus(), 60);
@@ -1256,7 +1324,7 @@
     }));
     const contract = parseInt(($('#j-contract').value || '').replace(/[^0-9]/g, ''), 10) || 0;
     if (pendingLead) { const l = leads.find(x => x.id === pendingLead); if (l) { l.stage = 'sold'; l.job = name; saveLeads(); } pendingLead = null; }
-    jobs[name] = { ...(jobs[name] || {}), upsell: amt, ...(contract ? { contract, ...(jobMode === 'new' ? { soldOn: todayISO() } : {}) } : {}), subs, sub: undefined, phone: undefined, addr: $('#j-addr').value.trim(), ...(jobMode === 'new' ? { kick } : {}), every: jobs[name]?.every || 5 };
+    jobs[name] = { ...(jobs[name] || {}), finance: $('#j-fin').value, upsell: amt, ...(contract ? { contract, ...(jobMode === 'new' ? { soldOn: todayISO() } : {}) } : {}), subs, sub: undefined, phone: undefined, addr: $('#j-addr').value.trim(), ...(jobMode === 'new' ? { kick } : {}), every: jobs[name]?.every || 5 };
     saveJobs(); save(); closeJob();
     if (jobMode === 'old') { curJob = name; jobTab = 'chat'; tabHist = []; chatLimit = 300; view = 'job'; render(); toast('Job added. Tap ＋ then Import WhatsApp chat to bring in the history.'); return; }
     view = 'today'; filter = 'all'; render(); window.scrollTo(0, 0);
@@ -1268,6 +1336,7 @@
   function openEdit(n) {
     const j = jobs[n] || {}; editName = n; editEvery = j.every || 5;
     $('#eTitle').textContent = n;
+    $('#e-fin').innerHTML = finOptions(j.finance); $('#e-finst').innerHTML = finStatusOptions(j.finStatus);
     $('#e-addr').value = j.addr || ''; $('#e-wa').value = j.wa || ''; $('#e-upsell').value = j.upsell || '';
     $('#subRows').innerHTML = ''; const cur = getSubs(j); (cur.length ? cur : [{}]).forEach(addSubRow);
     paintEvery(); $('#editBg').classList.add('open');
@@ -1289,7 +1358,7 @@
   $('#editBg').onclick = e => { if (e.target.id === 'editBg') closeEdit(); };
   $('#everyChips').onclick = e => { const c = e.target.closest('.chip'); if (c) { editEvery = +c.dataset.e; paintEvery(); } };
   $('#eSave').onclick = () => {
-    jobs[editName] = { ...(jobs[editName] || {}), addr: $('#e-addr').value.trim(), wa: $('#e-wa').value.trim(), sub: undefined, phone: undefined,
+    jobs[editName] = { ...(jobs[editName] || {}), addr: $('#e-addr').value.trim(), wa: $('#e-wa').value.trim(), finance: $('#e-fin').value, finStatus: $('#e-fin').value && $('#e-fin').value !== 'Cash' ? $('#e-finst').value : '', sub: undefined, phone: undefined,
       subs: [...document.querySelectorAll('#subRows .subrow')].map(r => ({ name: r.querySelector('.s-name').value.trim(), trade: r.querySelector('.s-trade').value.trim(), phone: r.querySelector('.s-phone').value.trim() })).filter(x => x.name),
       upsell: parseInt($('#e-upsell').value.replace(/[^0-9]/g, ''), 10) || 0, every: editEvery };
     saveJobs(); closeEdit(); render();
@@ -1379,6 +1448,12 @@
       if (act === 'back') return backTab();
       if (act === 'callall') return callPeople(curJob);
       if (act === 'addmember') return addMemberMenu(curJob);
+      if (act === 'subrow') { if (e.target.closest('.mcall')) return; return subMenu(curJob, +el.dataset.i); }
+      if (act === 'addsub') { openEdit(curJob); addSubRow(); return; }
+      if (act === 'fincomp') return finCompMenu(curJob);
+      if (act === 'finstat') return finStatusMenu(curJob);
+      if (act === 'finedit') return openFin();
+      if (act === 'subdir') return subDirMenu(+el.dataset.i);
       if (act === 'member') { if (e.target.closest('.mcall')) return; return memberMenu(curJob, +el.dataset.i); }
       if (act === 'mtab') { mediaTab = el.dataset.t; return render(); }
       if (act === 'openlink') return void window.open(el.dataset.u, '_blank');
