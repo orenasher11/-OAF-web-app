@@ -9,8 +9,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.svg">
 <title>My Tasks</title>
-<link rel="stylesheet" href="assets/base.css?v=27">
-<link rel="stylesheet" href="assets/theme.css?v=27">
+<link rel="stylesheet" href="assets/base.css?v=28">
+<link rel="stylesheet" href="assets/theme.css?v=28">
 </head>
 <body class="blueprint">
 <div class="app">
@@ -28,11 +28,14 @@
 </div>
 <button class="fab" id="fab" aria-label="Add task">+</button>
 <div class="chathead" id="chatHead" hidden>
+  <div class="chrow">
   <button class="cback" id="cBack" aria-label="Back">&#8249;</button>
   <div class="cavatar"><svg viewBox="0 0 24 24" width="26" height="26" fill="#0b7a4b"><path d="M16 11a3 3 0 100-6 3 3 0 000 6zM8 11a3 3 0 100-6 3 3 0 000 6zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></div>
   <button class="ctitle" id="cTitle"><b id="cName"></b><span id="cMembers"></span></button>
   <button class="cact" id="cTasks" aria-label="Tasks">✅<i id="cTaskN"></i></button>
   <button class="cact" id="cCall" aria-label="Call">📞</button>
+  </div>
+  <button class="stagerow" id="cStage"><span class="sdot"></span><b id="cStageTxt"></b><span class="sseg" id="cStageSeg"></span><i>▾</i></button>
 </div>
 <div class="composer" id="composer" hidden>
   <div class="tray" id="tray" hidden></div>
@@ -127,6 +130,8 @@
     <input id="j-sub" placeholder="e.g. Carlos plumbing" autocomplete="off">
     <label for="j-phone">Sub phone (optional)</label>
     <input id="j-phone" type="tel" inputmode="tel" placeholder="e.g. 760 555 1234" autocomplete="off">
+    <label for="j-stage">Job stage</label>
+    <select id="j-stage"></select>
     <label for="j-fin">Finance company</label>
     <select id="j-fin"></select>
     <label for="j-appr">Approved up to $ (optional)</label>
@@ -355,7 +360,7 @@
 <script>
 // Safety net: shows a repair bar if the app fails to start or throws an error. Never deletes your saved tasks.
 (function () {
-  var EXPECT = '27', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
+  var EXPECT = '28', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
   function show(t) { try { msg.textContent = t; bar.hidden = false; } catch (e) {} }
   window.__oafNotify = show;
   window.addEventListener('error', function (e) { if (e.message && /ResizeObserver|Script error/.test(e.message)) return; show('Error: ' + (e.message || 'unknown') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
@@ -381,9 +386,9 @@
   }, 3500);
 })();
 </script>
-<script src="assets/config.js?v=27"></script>
+<script src="assets/config.js?v=28"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="assets/app.js?v=27"></script>
-<script src="assets/sync.js?v=27"></script>
+<script src="assets/app.js?v=28"></script>
+<script src="assets/sync.js?v=28"></script>
 </body>
 </html>

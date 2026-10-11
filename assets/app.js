@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '27';
+  const APP_VERSION = '28';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -27,6 +27,10 @@
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(tasks)); } catch {} changed(); };
   const FIN_DEFAULT = ['Homerun', 'Aqua', 'Renew', 'Figure', 'HFS', 'Acorn', 'Jason', 'Limor', 'Cash'];
   const FIN_STATUS = ['Not started', 'Applied', 'Approved', 'Docs signed', 'Funded', 'Declined'];
+  const JSTAGES = ['PRE NTP', 'POST NTP', 'IN PROGRESS', 'PRE UPSELL', 'POST UPSELL', 'BEFORE COMPLETION', 'COMPLETED', 'MONEY RECEIVED'];
+  const SCOL = ['#64748b', '#2563eb', '#f97316', '#9333ea', '#6366f1', '#d97706', '#16a34a', '#0f766e'];
+  const stageIdx = j => j && j.stage ? JSTAGES.indexOf(j.stage) : -1;
+  let stageF = 'all';
   const BOTS = [{ name: 'Job Assistant', role: 'AI bot · coming soon' }];
   let cfg = { pct: 10, override: 1, goal: 500000, finance: FIN_DEFAULT.slice() };
   try { cfg = { ...cfg, ...(JSON.parse(localStorage.getItem('oaf-cfg-v1')) || {}) }; } catch {}
@@ -92,6 +96,7 @@
     const doneRecent = tasks.filter(t => t.done && t.project === n && t.doneOn && daysBetween(t.doneOn, t0) <= 7);
     const L = [`${n}${j.addr ? ' - ' + j.addr : ''}`];
     if (subs.length) L.push('Subs: ' + subs.map(subLabel).join(', '));
+    if (j.stage) L.push('Stage: ' + j.stage);
     if (j.upsell) L.push('Upsell potential: ' + money(j.upsell));
     { const sm = finSummary(j); sm.fins.forEach(f => L.push('Financing: ' + f.company + (f.status ? ' · ' + f.status : '') + (f.amount ? ' · ' + money0(f.amount) : '') + (f.approved ? ' of ' + money0(f.approved) + ' approved' : ''))); if (sm.room) L.push('Room to upsell: ' + money0(sm.room) + (sm.offered ? ' (' + money0(sm.offered) + ' offered)' : '')); }
     L.push('', late.length ? `⚠ ${late.length} overdue ${late.length === 1 ? 'task' : 'tasks'}` : '✓ Nothing overdue');
@@ -166,6 +171,7 @@
     (j.notes || []).forEach(x => items.push({ id: x.id, ts: new Date(x.at).getTime(), kind: 'note', text: x.text, star: x.star, heart: x.heart }));
     (j.chat || []).forEach(x => { const other = x.kind === 'out' && x.uid && window.OAF_ME && x.uid !== window.OAF_ME; items.push({ ...x, ts: new Date(x.at).getTime(), ...(other ? { kind: 'in', who: x.by || 'Teammate' } : {}) }); });
     tasks.filter(t => t.done && t.project === n && t.doneOn).forEach(t => items.push({ id: 'd' + t.id, ts: new Date(t.doneAt || t.doneOn + 'T12:00:00').getTime(), kind: 'sys', text: '✓ Done: ' + t.title }));
+    (j.stageLog || []).forEach((x, i) => items.push({ id: 'st' + i, ts: new Date(x.at).getTime(), kind: 'sys', text: '📍 Stage: ' + x.stage }));
     if (j.last) items.push({ id: 'v', ts: new Date(j.last + 'T12:00:00').getTime(), kind: 'sys', text: j.kind === 'photos' ? '📷 Photos received from sub' : '🚗 Site visit logged' });
     return items.sort((a, b) => a.ts - b.ts);
   }
@@ -274,6 +280,8 @@
     $('#cName').textContent = j.addr || n;
     const names = [...new Set(membersOf(n).map(x => x.name))];
     $('#cMembers').textContent = [...names, ...BOTS.map(b => '🤖 ' + b.name), 'You'].join(', ');
+    { const i = stageIdx(j); $('#cStageTxt').textContent = i >= 0 ? j.stage : 'Set the job stage'; $('#cStage').style.setProperty('--c', i >= 0 ? SCOL[i] : '#94a3b8');
+      $('#cStageSeg').innerHTML = JSTAGES.map((_, k) => `<i class="${k <= i ? 'on' : ''}"></i>`).join(''); }
     $('#cTaskN').textContent = tasks.filter(t => !t.done && t.project === n).length || '';
     $('#apVia').lastChild.textContent = sendVia === 'wa' ? 'Sending via WhatsApp' : 'Sending via Messages';
   }
@@ -650,6 +658,20 @@
   };
   function openCfg() { $('#cf-pct').value = cfg.pct; $('#cf-over').value = cfg.override; $('#cf-goal').value = cfg.goal; $('#cfgBg').classList.add('open'); }
 
+  // ---- job stages ----
+  function setStage(n, st) {
+    const j = jobs[n] = jobs[n] || {}; if (j.stage === st) return;
+    const prev = j.stage; j.stage = st; j.stageAt = new Date().toISOString();
+    j.stageLog = [...(j.stageLog || []), { stage: st, at: j.stageAt, by: OWNER || '' }];
+    if (st === 'MONEY RECEIVED') j.archived = true; else if (prev === 'MONEY RECEIVED') j.archived = false;
+    saveJobs(); render(); toast(st === 'MONEY RECEIVED' ? '💰 Money received. Job moved to Completed jobs.' : 'Stage: ' + st);
+  }
+  function stageMenu(n) {
+    const j = jobs[n] || {}, i = stageIdx(j), items = [];
+    if (i >= 0 && i < JSTAGES.length - 1) items.push({ label: '→ Next: ' + JSTAGES[i + 1], fn: () => setStage(n, JSTAGES[i + 1]) });
+    JSTAGES.forEach(st => items.push({ label: (st === j.stage ? '✓ ' : '') + st, fn: () => setStage(n, st) }));
+    openPick('Job stage', items);
+  }
   // ---- finance company per job ----
   let lnJob = '', lnIdx = -1;
   function lnPreview() {
@@ -790,6 +812,7 @@
         ${srow('🖼️', 'Media, links and docs', media.length + links, 'jtab', 'data-tab="media"')}
         ${srow('⭐', 'Starred messages', starred, 'jtab', 'data-tab="starred"')}
         ${srow('✅', 'To-do &amp; checklists', openN ? openN + ' open' : '✓', 'jtab', 'data-tab="tasks"')}
+        ${srow('📍', 'Job stage', j.stage ? esc(j.stage) : 'Set', 'stagepick')}
         ${srow('💵', 'Contract &amp; upsells', j.contract ? money0(j.contract) : 'Add', 'moneyjob', `data-p="${esc(n)}"`)}
         ${srow('📝', 'Job summary', '', 'summary')}</div>
       <div class="ssec">Financing</div><div class="scard">
@@ -1014,7 +1037,11 @@
       else html += screenInfo(n);
     } else {
       $('#h1').textContent = 'Projects';
-      const names = activeProjects();
+      const allNames = activeProjects(), names = stageF === 'all' ? allNames : allNames.filter(n => (jobs[n] || {}).stage === stageF);
+      if (allNames.length > 1 || stageF !== 'all') {
+        const cnt = st => allNames.filter(n => (jobs[n] || {}).stage === st).length;
+        html += `<div class="stagef"><button class="${stageF === 'all' ? 'on' : ''}" data-act="stagef" data-s="all">All ${allNames.length}</button>${JSTAGES.map((st, i) => cnt(st) ? `<button class="${stageF === st ? 'on' : ''}" style="--c:${SCOL[i]}" data-act="stagef" data-s="${st}">${st} ${cnt(st)}</button>` : '').join('')}</div>`;
+      }
       $('#sub').textContent = names.length ? `${names.length} active ${names.length === 1 ? 'job' : 'jobs'}` : 'No active jobs yet';
       const cityOf = n => { const a = (jobs[n]?.addr || '').split(',').map(x => x.trim()).filter(Boolean); return a.length > 1 ? a[1] : (a.length ? 'Other' : ''); };
       const sections = {};
@@ -1029,6 +1056,7 @@
             <span class="fbody">
               <span class="faddr ${j.addr ? '' : 'none'}">${esc(j.addr || 'No address yet')}</span>
               <span class="fclient">${esc(n)}</span>
+              ${stageIdx(j) >= 0 ? `<span class="stgchip" style="--c:${SCOL[stageIdx(j)]}">${esc(j.stage)}</span>` : ''}
               ${getSubs(j).length ? `<span class="subchips">${subChips(j)}</span>` : ''}
               <span class="fmeta">${mine.length} open${late ? ` · <em>${late} late</em>` : nxt && nxt.due ? ' · next ' + fmtDate(nxt.due) : ''}${getFins(j).length ? ` · <span class="fintag">🏦 ${esc(finTag(j))}</span>` : ''}</span>
             </span>
@@ -1213,6 +1241,7 @@
   $('#cQuick').onclick = () => doAction('quick');
   $('#cBack').onclick = () => { view = 'projects'; tabHist = []; render(); window.scrollTo(0, 0); };
   $('#cTitle').onclick = () => goTab('info');
+  $('#cStage').onclick = () => stageMenu(curJob);
   $('#cTasks').onclick = () => goTab('tasks');
   $('#cCall').onclick = () => callPeople(curJob);
   function doAction(a) {
@@ -1295,7 +1324,7 @@
       T('c2', 'Find upsell opportunities with Cohen', C, d(1), { cat: 'visit', ord: 4, star: true, time: '08:00' }),
     ];
     const jb = {
-      [A]: { demo: true, fins: [{ id: 'demo-f1', company: 'Aqua', status: 'Approved', amount: 24500, approved: 38000 }], addr: '123 Main St, Palm Springs, CA', upsell: 30000, contract: 24500, soldOn: d(-6),
+      [A]: { demo: true, stage: 'IN PROGRESS', stageLog: [{ stage: 'PRE NTP', at: ago(160) }, { stage: 'POST NTP', at: ago(150) }, { stage: 'IN PROGRESS', at: ago(140) }], fins: [{ id: 'demo-f1', company: 'Aqua', status: 'Approved', amount: 24500, approved: 38000 }], addr: '123 Main St, Palm Springs, CA', upsell: 30000, contract: 24500, soldOn: d(-6),
         upsells: [{ id: 'demo-u1', title: 'Backsplash', amount: 3200, status: 'won', at: d(-3), wonAt: d(-3) }, { id: 'demo-u2', title: 'Under-cabinet lighting', amount: 1800, status: 'offered', at: d(-1) }, { id: 'demo-u3', title: 'Hallway flooring', amount: 5400, status: 'offered', at: d(-1) }], last: d(-6), kind: 'visit', every: 5, kick: d(-6),
         subs: [{ name: 'Carlos', trade: 'Plumber', phone: '760 555 0101' }, { name: 'Mike', trade: 'Electrician', phone: '760 555 0102' }],
         chat: [{ id: 'demo-m1', at: ago(50), kind: 'out', text: 'Hi team, it\'s ' + (OWNER || 'me') + '. Can you send photos of the current work at Martinez kitchen? Thanks!', to: ['Carlos', 'Mike'] },
@@ -1303,10 +1332,10 @@
                { id: 'demo-m3', at: ago(47), kind: 'in', who: 'Mike', text: 'Panel upgrade is scheduled for Friday. Customer asked about adding under-cabinet lighting.' },
                { id: 'demo-m4', at: ago(3), kind: 'out', text: 'Great. Martinez wants a backsplash too. Let\'s price it.' }],
         notes: [{ id: 'demo-n1', at: ago(30), text: 'Customer mentioned she may want new flooring in the hallway.' }] },
-      [B]: { demo: true, fins: [{ id: 'demo-f2', company: 'Cash', status: '', amount: 11800, approved: 0 }], addr: '45 Oak Ave, Barstow, CA', upsell: 12000, contract: 11800, soldOn: d(-8), seller: 'Sam (rep)', last: d(-2), kind: 'photos', every: 5, kick: d(-8),
+      [B]: { demo: true, stage: 'PRE UPSELL', stageLog: [{ stage: 'PRE UPSELL', at: ago(40) }], fins: [{ id: 'demo-f2', company: 'Cash', status: '', amount: 11800, approved: 0 }], addr: '45 Oak Ave, Barstow, CA', upsell: 12000, contract: 11800, soldOn: d(-8), seller: 'Sam (rep)', last: d(-2), kind: 'photos', every: 5, kick: d(-8),
         subs: [{ name: 'Dave', trade: 'Tile', phone: '760 555 0103' }],
         chat: [{ id: 'demo-m5', at: ago(20), kind: 'in', who: 'Dave', text: 'Shower pan is in. Waiting on the inspector.' }] },
-      [C]: { demo: true, fins: [{ id: 'demo-f3', company: 'Homerun', status: 'Applied', amount: 0, approved: 60000 }, { id: 'demo-f4', company: 'Figure', status: 'Approved', amount: 0, approved: 25000 }], addr: '900 Sunset Blvd, San Bernardino, CA', upsell: 45000, kick: d(1), every: 5,
+      [C]: { demo: true, stage: 'PRE NTP', stageLog: [{ stage: 'PRE NTP', at: ago(10) }], fins: [{ id: 'demo-f3', company: 'Homerun', status: 'Applied', amount: 0, approved: 60000 }, { id: 'demo-f4', company: 'Figure', status: 'Approved', amount: 0, approved: 25000 }], addr: '900 Sunset Blvd, San Bernardino, CA', upsell: 45000, kick: d(1), every: 5,
         subs: [{ name: 'Tony', trade: 'General', phone: '909 555 0104' }], chat: [] },
     };
     tasks = [...tasks.filter(x => !x.demo), ...t]; Object.assign(jobs, jb);
@@ -1335,9 +1364,9 @@
   }
   let jobMode = 'new';
   function paintMode() { document.querySelectorAll('#j-mode .chip').forEach(c => c.classList.toggle('on', c.dataset.m === jobMode)); $('#j-kickwrap').hidden = jobMode === 'old'; $('#jHelp').textContent = jobMode === 'old' ? 'Adds a job that is already underway. No kickoff checklist. You can paste its WhatsApp chat in right after.' : 'Creates your kickoff checklist (coffee + donuts, photos, DocuSign, sub walkthrough, upsell discovery) plus follow-ups.'; }
-  $('#j-mode').onclick = e => { const c = e.target.closest('[data-m]'); if (c) { jobMode = c.dataset.m; paintMode(); } };
+  $('#j-mode').onclick = e => { const c = e.target.closest('[data-m]'); if (c) { jobMode = c.dataset.m; paintMode(); $('#j-stage').value = jobMode === 'old' ? 'IN PROGRESS' : 'PRE NTP'; } };
   function openJob(mode) {
-    jobMode = mode || 'new'; paintMode(); $('#j-fin').innerHTML = finOptions(''); $('#j-appr').value = '';
+    jobMode = mode || 'new'; paintMode(); $('#j-stage').innerHTML = JSTAGES.map(x => `<option>${x}</option>`).join(''); $('#j-stage').value = jobMode === 'old' ? 'IN PROGRESS' : 'PRE NTP'; $('#j-fin').innerHTML = finOptions(''); $('#j-appr').value = '';
     ['#j-name', '#j-sub', '#j-phone', '#j-addr', '#j-upsell', '#j-contract'].forEach(i => { $(i).value = ''; $(i).classList.remove('err'); });
     setKick(addDays(1)); $('#j-time').value = '08:00';
     $('#jobBg').classList.add('open'); setTimeout(() => $('#j-addr').focus(), 60);
@@ -1370,7 +1399,8 @@
     const contract = parseInt(($('#j-contract').value || '').replace(/[^0-9]/g, ''), 10) || 0;
     if (pendingLead) { const l = leads.find(x => x.id === pendingLead); if (l) { l.stage = 'sold'; l.job = name; saveLeads(); } pendingLead = null; }
     const finCo = $('#j-fin').value, apprIn = parseInt(($('#j-appr').value || '').replace(/[^0-9]/g, ''), 10) || 0;
-    jobs[name] = { ...(jobs[name] || {}), ...(finCo ? { fins: [{ id: uid(), company: finCo, status: finCo === 'Cash' ? '' : 'Applied', amount: contract || 0, approved: finCo === 'Cash' ? 0 : apprIn }], finance: '', finStatus: '' } : {}), upsell: amt, ...(contract ? { contract, ...(jobMode === 'new' ? { soldOn: todayISO() } : {}) } : {}), subs, sub: undefined, phone: undefined, addr: $('#j-addr').value.trim(), ...(jobMode === 'new' ? { kick } : {}), every: jobs[name]?.every || 5 };
+    const stNew = $('#j-stage').value || 'PRE NTP';
+    jobs[name] = { ...(jobs[name] || {}), stage: stNew, stageAt: new Date().toISOString(), stageLog: [{ stage: stNew, at: new Date().toISOString(), by: OWNER || '' }], ...(finCo ? { fins: [{ id: uid(), company: finCo, status: finCo === 'Cash' ? '' : 'Applied', amount: contract || 0, approved: finCo === 'Cash' ? 0 : apprIn }], finance: '', finStatus: '' } : {}), upsell: amt, ...(contract ? { contract, ...(jobMode === 'new' ? { soldOn: todayISO() } : {}) } : {}), subs, sub: undefined, phone: undefined, addr: $('#j-addr').value.trim(), ...(jobMode === 'new' ? { kick } : {}), every: jobs[name]?.every || 5 };
     saveJobs(); save(); closeJob();
     if (jobMode === 'old') { curJob = name; jobTab = 'chat'; tabHist = []; chatLimit = 300; view = 'job'; render(); toast('Job added. Tap ＋ then Import WhatsApp chat to bring in the history.'); return; }
     view = 'today'; filter = 'all'; render(); window.scrollTo(0, 0);
@@ -1495,6 +1525,8 @@
       if (act === 'addmember') return addMemberMenu(curJob);
       if (act === 'subrow') { if (e.target.closest('.mcall')) return; return subMenu(curJob, +el.dataset.i); }
       if (act === 'addsub') { openEdit(curJob); addSubRow(); return; }
+      if (act === 'stagepick') return stageMenu(curJob);
+      if (act === 'stagef') { stageF = el.dataset.s; return render(); }
       if (act === 'finrow') return openLoan(curJob, +el.dataset.i);
       if (act === 'finadd') return openLoan(curJob, -1);
       if (act === 'finedit') return openFin();

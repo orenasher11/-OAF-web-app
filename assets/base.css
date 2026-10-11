@@ -375,3 +375,19 @@ body.inchat main{padding:calc(76px + env(safe-area-inset-top)) 10px 90px}
 .roombox .rtop{display:flex;justify-content:space-between;align-items:baseline;font-weight:800}.roombox .rtop b{font-size:24px;color:#b54708}
 .roombox .rsub{font-size:13.5px;color:#6b4a1e;margin-top:3px}.roombox.dim{background:#f2f5fa;border-color:#e1e7f0}.roombox.dim .rsub{color:var(--muted)}
 .bigcard.soft{background:linear-gradient(160deg,#b54708,#e07a1f)}
+
+/* ===== job stages ===== */
+.chathead{flex-direction:column;align-items:stretch;gap:8px;padding-bottom:10px}
+.chrow{display:flex;align-items:center;gap:8px}
+.stagerow{--c:#94a3b8;display:flex;align-items:center;gap:10px;border:0;border-radius:12px;background:rgba(255,255,255,.14);color:#fff;padding:8px 12px;margin:0 6px 0 8px;text-align:left}
+.stagerow .sdot{width:11px;height:11px;border-radius:50%;background:var(--c);box-shadow:0 0 0 3px rgba(255,255,255,.25);flex:none}
+.stagerow b{font-size:13.5px;letter-spacing:.04em;white-space:nowrap}
+.stagerow .sseg{display:flex;gap:3px;flex:1;min-width:0;justify-content:flex-end}
+.stagerow .sseg i{width:100%;max-width:18px;height:5px;border-radius:3px;background:rgba(255,255,255,.28)}
+.stagerow .sseg i.on{background:var(--c);filter:brightness(1.35)}
+.stagerow>i{font-style:normal;opacity:.7}
+body.inchat main{padding-top:calc(122px + env(safe-area-inset-top))}
+.stgchip{--c:#64748b;display:inline-block;align-self:flex-start;font-size:11px;font-weight:800;letter-spacing:.05em;color:#fff;background:var(--c);border-radius:999px;padding:2px 9px;margin-top:2px}
+.stagef{display:flex;gap:6px;overflow-x:auto;margin:8px -16px 6px;padding:2px 16px 4px;-webkit-overflow-scrolling:touch}
+.stagef button{--c:#0f2747;flex:none;border:1px solid #d7deea;background:#fff;border-radius:999px;padding:7px 12px;font-size:12.5px;font-weight:800;color:#55657d;white-space:nowrap}
+.stagef button.on{background:var(--c);border-color:var(--c);color:#fff}
