@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '36';
+  const APP_VERSION = '37';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -9,6 +9,13 @@
     { id: 'money', label: 'Invoice / $', icon: '💵' },
     { id: 'permit', label: 'Permit', icon: '📋' },
     { id: 'order', label: 'Order', icon: '📦' },
+    { id: 'coffee', label: 'Coffee', icon: '☕' },
+    { id: 'meet', label: 'Meet', icon: '🤝' },
+    { id: 'video', label: 'Video', icon: '🎥' },
+    { id: 'photo', label: 'Photos', icon: '📸' },
+    { id: 'sign', label: 'Sign', icon: '✍️' },
+    { id: 'upsell', label: 'Upsell', icon: '🔎' },
+    { id: 'contact', label: 'Contact', icon: '📱' },
   ];
   const catOf = id => CATS.find(c => c.id === id);
 
@@ -1000,14 +1007,15 @@
     const todo = all.filter(t => !t.done && t.ord === undefined).sort(cmp), doneT = all.filter(t => t.done && t.ord === undefined);
     const dn = chk.filter(t => t.done).length, next = chk.find(t => !t.done), O = { hide: true };
     let h = sbar(0, 'To-do &amp; checklists', `<button class="spill primary" data-act="addto" data-p="${esc(n)}">＋ Task</button>`);
-    if (!chk.length) h += `<div class="roombox dim kickcard"><div class="rtop"><span>📋 No checklist on this job yet</span></div><div class="rsub">Add the standard kickoff checklist: coffee + donuts, site photos, DocuSign, sub walkthrough, upsell discovery, plus follow-ups.</div><button class="jbtn primary wide" data-act="addkick">Add the kickoff checklist</button></div>`;
+    if (!chk.length) h += `<div class="roombox dim kickcard"><div class="rtop"><span>🏈 No Game Day plan on this job yet</span></div><div class="rsub">Add the 3-day playbook: the 8–9 AM kickoff, the evening call, the upsell push, and the day-3 check.</div><button class="jbtn primary wide" data-act="addkick">Add the Game Day plan</button></div>`;
     else {
       const pc = Math.round(dn / chk.length * 100);
-      h += `<div class="chkhead"><div class="ring" style="--p:${pc}"><b>${dn}/${chk.length}</b></div><div class="chkt"><b>Kickoff checklist</b><small>${dn === chk.length ? '🎉 All done. Nice work!' : dn ? `${chk.length - dn} steps to go` : 'Let’s get this job started'}</small></div></div>`;
-      if (next) h += `<div class="task nextcard" data-id="${next.id}"><div class="nlabel">NEXT STEP</div><div class="ntitle" data-act="edit">${catOf(next.cat) ? catOf(next.cat).icon + ' ' : ''}${esc(next.title)}</div><div class="nwhen">${next.due ? fmtDate(next.due) + (next.time ? ' · ' + fmtTime(next.time) : '') : ''}</div><button class="ndone" data-act="toggle">✓ Mark done</button></div>`;
-      const days = []; chk.forEach(t => { const k = (t.due || '') + '|' + (t.time || ''); let g = days.find(x => x.k === k); if (!g) days.push(g = { k, due: t.due, time: t.time, items: [] }); g.items.push(t); });
-      days.forEach(g => { const d = g.items.filter(t => t.done).length;
-        h += `<div class="dayh"><span>${g.time ? '☀️ ' : ''}${g.due ? fmtDate(g.due) : 'No date'}${g.time ? ' · ' + fmtTime(g.time) : ''}</span><em>${d}/${g.items.length}</em></div>` + g.items.map(t => taskHTML(t, { hide: true, nodate: true })).join(''); });
+      h += `<div class="chkhead"><div class="ring" style="--p:${pc}"><b>${dn}/${chk.length}</b></div><div class="chkt"><b>🏈 Game Day</b><small>${dn === chk.length ? '🎉 All done. Nice work!' : dn ? `${chk.length - dn} steps to go` : 'Let’s get this job started'}</small></div></div>`;
+      if (next) h += `<div class="task nextcard" data-id="${next.id}"><div class="nlabel">NEXT STEP</div><div class="ntitle" data-act="edit">${catOf(next.cat) ? catOf(next.cat).icon + ' ' : ''}${esc(next.title)}</div><div class="nwhen">${next.due ? fmtDate(next.due) + (next.allDay ? ' · open all day' : next.time ? ' · ' + fmtRange(next.time, next.timeEnd) : '') : ''}</div>${next.link && ({ video: 1, photo: 1, stage: 1 })[next.link] ? `<button class="ngo" data-act="tlink" data-l="${next.link}">${({ video: '🎥 Record the video', photo: '📸 Take the pictures', stage: '📍 Update the stage' })[next.link]}</button>` : ''}<button class="ndone" data-act="toggle">✓ Mark done</button></div>`;
+      const days = []; chk.forEach(t => { const k = t.allDay ? (t.due || '') + '|all' : (t.due || '') + '|' + (t.time || '') + '|' + (t.timeEnd || ''); let g = days.find(x => x.k === k); if (!g) days.push(g = { k, due: t.due, time: t.time, timeEnd: t.timeEnd, allDay: t.allDay, gd: t.gd, items: [] }); g.items.push(t); });
+      days.forEach(g => { const d = g.items.filter(t => t.done).length, eve = g.time && g.time >= '17:00';
+        const lab = g.allDay ? 'open all day' : g.time ? fmtRange(g.time, g.timeEnd) : '';
+        h += `<div class="dayh"><span>${eve ? '🌙' : g.allDay ? '📌' : '☀️'} ${g.gd ? 'Day ' + g.gd + ' · ' : ''}${g.due ? fmtDate(g.due) : 'No date'}${lab ? ' · ' + lab : ''}</span><em>${d}/${g.items.length}</em></div>` + g.items.map(t => taskHTML(t, { hide: true, nodate: true })).join(''); });
     }
     h += `<div class="ssec">To-do · ${todo.length} open</div>` + (todo.length ? todo.map(t => taskHTML(t, O)).join('') : `<div class="empty small">Nothing on your list. Tap ＋ Task to add one.</div>`);
     if (doneT.length) h += `<button class="older" data-act="showdonet">${showDoneT ? 'Hide' : 'Show'} ${doneT.length} finished ${doneT.length === 1 ? 'task' : 'tasks'}</button>` + (showDoneT ? doneT.map(t => taskHTML(t, O)).join('') : '');
@@ -1048,19 +1056,28 @@
     const [y, m, d] = s.split('-').map(Number);
     return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   }
-  const cmp = (a, b) => (a.due || '9999').localeCompare(b.due || '9999') || (b.star ? 1 : 0) - (a.star ? 1 : 0) || (a.ord ?? 99) - (b.ord ?? 99) || a.title.localeCompare(b.title);
+  const hm = t => { const [h, m] = t.split(':').map(Number); return { h, m, ap: h < 12 ? 'AM' : 'PM', s: `${h % 12 || 12}:${pad(m)}` }; };
+  function fmtRange(a, b) { if (!a) return ''; const x = hm(a); if (!b) return x.s + ' ' + x.ap; const y = hm(b); return x.ap === y.ap ? `${x.s}–${y.s} ${y.ap}` : `${x.s} ${x.ap} – ${y.s} ${y.ap}`; }
+  const nowHM = () => { const d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+  const cmp = (a, b) => (a.due || '9999').localeCompare(b.due || '9999') || (a.time || '99:99').localeCompare(b.time || '99:99') || (b.star ? 1 : 0) - (a.star ? 1 : 0) || (a.ord ?? 99) - (b.ord ?? 99) || a.title.localeCompare(b.title);
 
   // compact, calm task rows: one line of title, a small date, and a single ⋯ menu for the extras
   function taskHTML(t, opts) {
-    const t0 = todayISO(), c = catOf(t.cat), o = (opts && typeof opts === 'object') ? opts : {};
-    const dcls = !t.done && t.due ? (t.due < t0 ? 'late' : t.due === t0 ? 'today' : '') : '';
-    const when = t.due ? fmtDate(t.due) + (t.time ? ' · ' + fmtTime(t.time) : '') : 'No date';
-    return `<div class="task ${t.done ? 'done' : ''} ${t.star ? 'starred' : ''}" data-id="${t.id}">
+    const t0 = todayISO(), c = catOf(t.cat), o = (opts && typeof opts === 'object') ? opts : {}, nw = nowHM();
+    let dcls = !t.done && t.due ? (t.due < t0 ? 'late' : t.due === t0 ? 'today' : '') : '';
+    const inWin = !t.done && t.due === t0 && t.time && t.timeEnd && !t.allDay && nw >= t.time && nw < t.timeEnd;
+    const passed = !t.done && t.due === t0 && t.timeEnd && !t.allDay && nw >= t.timeEnd;
+    if (passed) dcls = 'late';
+    const when = !t.due ? 'No date' : (t.allDay ? fmtDate(t.due) + ' · open all day' + (t.time ? ' (ideal ' + fmtRange(t.time) + ')' : '') : fmtDate(t.due) + (t.time ? ' · ' + fmtRange(t.time, t.timeEnd) : ''));
+    const missed = t.carry && !t.done && t.due && t.due < t0;
+    const links = { video: '🎥 Record the video', photo: '📸 Take the pictures', stage: '📍 Update the stage' };
+    return `<div class="task ${t.done ? 'done' : ''} ${t.star ? 'starred' : ''} ${inWin ? 'nowrow' : ''}" data-id="${t.id}">
       <button class="check" data-act="toggle" aria-label="Mark done">${t.done ? '✓' : ''}</button>
       <div class="body" data-act="edit">
         <div class="title">${t.star && !t.done ? '<i class="tst">★</i> ' : ''}${c ? `<span class="tic">${c.icon}</span> ` : ''}${esc(t.title)}</div>
-        <div class="meta">${t.project && !o.hide ? `<span class="proj">${esc(t.project)}</span>` : ''}${o.nodate ? '' : `<span class="date ${dcls}">${when}</span>`}</div>
+        <div class="meta">${inWin ? '<span class="nowpill">NOW</span>' : ''}${missed ? '<span class="misspill">Missed. Do it today</span>' : ''}${t.project && !o.hide ? `<span class="proj">${esc(t.project)}</span>` : ''}${o.nodate ? '' : `<span class="date ${dcls}">${when}</span>`}</div>
         ${t.notes ? `<div class="notes">${esc(t.notes)}</div>` : ''}
+        ${t.link && links[t.link] && !t.done ? `<button class="tlink" data-act="tlink" data-l="${t.link}">${links[t.link]}</button>` : ''}
       </div>
       ${t.done ? '' : `<button class="tmore" data-act="tmenu" aria-label="More">⋯</button>`}
     </div>`;
@@ -1558,23 +1575,30 @@
     $('#j-kick').value = v || '';
     document.querySelectorAll('#kickChips .chip').forEach(c => c.classList.toggle('on', !!v && addDays(+c.dataset.d) === v));
   }
+  // GAME DAY: day 1 is 8-9 AM on site (+ a 7:30 PM call), day 2 is the upsell push (stays open all day, carries over), day 3 confirms the upsell meeting and the stage
   const kickoffPlan = (name, subTxt) => [
-    [0, 'Pick up coffee + donuts, meet ' + subTxt + ' at the site', 'visit', false, true],
-    [0, 'Take photos of the site before work starts', 'visit', false, true],
-    [0, 'Sign ' + name + ' on DocuSign with the finance company', 'money', false, true],
-    [0, 'Walk ' + subTxt + ' through what needs to be done', 'visit', false, true],
-    [0, 'Find upsell opportunities with ' + name, 'visit', true, true],
-    [1, 'Confirm ' + subTxt + ' started, ask for photos', 'call', false, false],
-    [3, 'Upsell follow-up call with ' + name, 'call', true, false],
-    [7, 'Progress check before work gets covered up', 'visit', false, false],
+    { off: 0, gd: 1, title: 'Coffee + donuts', cat: 'coffee', time: '08:00', timeEnd: '09:00' },
+    { off: 0, gd: 1, title: 'Meet ' + subTxt + ' and introduce them to the client', cat: 'meet', time: '08:00', timeEnd: '09:00' },
+    { off: 0, gd: 1, title: 'Take a video with the client', notes: 'Explain exactly what is going to happen and have the client confirm it on camera.', cat: 'video', link: 'video', time: '08:00', timeEnd: '09:00' },
+    { off: 0, gd: 1, title: 'Take pictures of the job', cat: 'photo', link: 'photo', time: '08:00', timeEnd: '09:00' },
+    { off: 0, gd: 1, title: 'Sign the NTP', cat: 'sign', link: 'stage', time: '08:00', timeEnd: '09:00' },
+    { off: 0, gd: 1, title: 'Sniff for upsell', cat: 'upsell', star: true, time: '08:00', timeEnd: '09:00' },
+    { off: 0, gd: 1, title: 'Make sure ' + name + ' saved the sales rep\'s number', cat: 'contact', time: '08:00', timeEnd: '09:00' },
+    { off: 0, gd: 1, title: 'Call ' + name + ' and ask how the first day went', cat: 'call', time: '19:30', timeEnd: '20:00' },
+    { off: 1, gd: 2, title: 'Be on site at 8 AM and pump the client for an upsell', notes: 'Can\'t make it today? Go tomorrow. This one stays open all day.', cat: 'upsell', star: true, time: '08:00', allDay: true, carry: true },
+    { off: 1, gd: 2, title: 'Set up the upsell meeting', notes: 'Same day is ideal. If not, the day after.', cat: 'meet', star: true, allDay: true, carry: true },
+    { off: 2, gd: 3, title: 'Make sure the upsell meeting is on the calendar', cat: 'meet', star: true, allDay: true, carry: true },
+    { off: 2, gd: 3, title: 'Update the job status', cat: 'sign', link: 'stage', allDay: true },
   ];
+  const planTask = (x, i, n, kick) => ({ id: uid(), done: false, title: x.title, project: n, due: addDays(x.off, kick), cat: x.cat, star: !!x.star, notes: x.notes || '', ord: i, gd: x.gd,
+    ...(x.time ? { time: x.time } : {}), ...(x.timeEnd ? { timeEnd: x.timeEnd } : {}), ...(x.allDay ? { allDay: true } : {}), ...(x.carry ? { carry: true } : {}), ...(x.link ? { link: x.link } : {}) });
   function addKickoff(n, startOff) {
-    const subs = getSubs(jobs[n]), subTxt = subs.length ? subs.map(x => x.name).join(' & ') : 'the sub', kick = addDays(startOff), time = '08:00';
-    kickoffPlan(n, subTxt).forEach(([off, title, cat, star, timed], i) => tasks.push({ id: uid(), done: false, title, project: n, due: addDays(off, kick), cat, star, notes: '', ord: i, ...(timed ? { time } : {}) }));
-    save(); render(); toast('Kickoff checklist added');
+    const subs = getSubs(jobs[n]), subTxt = subs.length ? subs.map(x => x.name).join(' & ') : 'the sub', kick = addDays(startOff);
+    kickoffPlan(n, subTxt).forEach((x, i) => tasks.push(planTask(x, i, n, kick)));
+    save(); render(); toast('Game Day plan added');
   }
   let jobMode = 'new';
-  function paintMode() { document.querySelectorAll('#j-mode .chip').forEach(c => c.classList.toggle('on', c.dataset.m === jobMode)); $('#j-kickwrap').hidden = jobMode === 'old'; $('#jHelp').textContent = jobMode === 'old' ? 'Adds a job that is already underway. No kickoff checklist. You can paste its WhatsApp chat in right after.' : 'Creates your kickoff checklist (coffee + donuts, photos, DocuSign, sub walkthrough, upsell discovery) plus follow-ups.'; }
+  function paintMode() { document.querySelectorAll('#j-mode .chip').forEach(c => c.classList.toggle('on', c.dataset.m === jobMode)); $('#j-kickwrap').hidden = jobMode === 'old'; $('#jHelp').textContent = jobMode === 'old' ? 'Adds a job that is already underway. No Game Day plan. You can paste its WhatsApp chat in right after.' : 'Creates your Game Day plan: the 8–9 AM kickoff, the evening call, the upsell push on day 2 and the day-3 check.'; }
   $('#j-mode').onclick = e => { const c = e.target.closest('[data-m]'); if (c) { jobMode = c.dataset.m; paintMode(); $('#j-stage').value = jobMode === 'old' ? 'IN PROGRESS' : 'PRE NTP'; } };
   function openJob(mode) {
     jobMode = mode || 'new'; paintMode(); $('#j-stage').innerHTML = JSTAGES.map(x => `<option>${x}</option>`).join(''); $('#j-stage').value = jobMode === 'old' ? 'IN PROGRESS' : 'PRE NTP'; $('#j-fin').innerHTML = finOptions(''); $('#j-appr').value = '';
@@ -1595,9 +1619,7 @@
     const subs = newSubs.length ? newSubs : getSubs(jobs[name]);
     const subTxt = subs.length ? subs.map(x => x.name).join(' & ') : 'the sub';
     const plan = kickoffPlan(name, subTxt);
-    if (jobMode === 'new') plan.forEach(([off, title, cat, star, timed], i) => tasks.push({
-      id: uid(), done: false, title, project: name, due: addDays(off, kick), cat, star, notes: '', ord: i, ...(timed ? { time } : {}),
-    }));
+    if (jobMode === 'new') plan.forEach((x, i) => tasks.push(planTask(x, i, name, kick)));
     const contract = parseInt(($('#j-contract').value || '').replace(/[^0-9]/g, ''), 10) || 0;
     if (pendingLead) { const l = leads.find(x => x.id === pendingLead); if (l) { l.stage = 'sold'; l.job = name; saveLeads(); } pendingLead = null; }
     const finCo = $('#j-fin').value, apprIn = parseInt(($('#j-appr').value || '').replace(/[^0-9]/g, ''), 10) || 0;
@@ -1606,7 +1628,7 @@
     saveJobs(); save(); closeJob();
     if (jobMode === 'old') { curJob = name; jobTab = 'chat'; tabHist = []; chatLimit = 300; view = 'job'; render(); toast('Job added. Tap ＋ then Import WhatsApp chat to bring in the history.'); return; }
     view = 'today'; filter = 'all'; render(); window.scrollTo(0, 0);
-    toast(`${plan.length} tasks created for ${name}`);
+    toast(`Game Day plan created for ${name}`);
   }
   // ---- edit job details ----
   let editName = '', editEvery = 5;
@@ -1703,6 +1725,12 @@
       if (act === 'openjob') { curJob = el.dataset.p; jobTab = 'chat'; tabHist = []; chatSearch = false; chatLimit = 300; view = 'job'; render(); return; }
       if (act === 'go') { view = el.dataset.v; filter = 'all'; render(); window.scrollTo(0, 0); return; }
       if (act === 'addkick') return openPick('Add the kickoff checklist', [{ label: 'Start today', fn: () => addKickoff(curJob, 0) }, { label: 'Start tomorrow at 8:00 AM', fn: () => addKickoff(curJob, 1) }, { label: 'Start in 2 days', fn: () => addKickoff(curJob, 2) }]);
+      if (act === 'tlink') {
+        const t = tasks.find(x => x.id === el.closest('.task').dataset.id); if (!t) return;
+        if (t.link === 'stage') return stageMenu(t.project);
+        if (t.project) { curJob = t.project; jobTab = 'chat'; tabHist = []; view = 'job'; render(); }
+        return void $(t.link === 'video' ? '#fVid' : '#fCam').click();
+      }
       if (act === 'showdonet') { showDoneT = !showDoneT; return render(); }
       if (act === 'tmenu') return taskMenu(el.closest('.task').dataset.id);
       if (act === 'tscope') { todayScope = el.dataset.t; filter = 'all'; return render(); }

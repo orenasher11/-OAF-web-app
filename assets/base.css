@@ -465,3 +465,11 @@ body.inchat main{padding-top:calc(122px + env(safe-area-inset-top))}
 .nextcard .nwhen{font-size:13px;color:#b9c9e0}
 .nextcard .ndone{margin-top:12px;width:100%;border:0;border-radius:14px;background:var(--accent);color:#fff;font-weight:800;font-size:16px;padding:13px}
 .dayh{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:16px 6px 6px}.dayh em{font-style:normal;color:#8a97ab}
+
+/* ===== game day ===== */
+.nowpill{background:#16a34a;color:#fff;font-size:10.5px;font-weight:900;letter-spacing:.08em;border-radius:6px;padding:2px 7px;animation:pulse 1.6s infinite}
+@keyframes pulse{50%{opacity:.55}}
+.misspill{background:#fee2e2;color:#b91c1c;font-size:11px;font-weight:800;border-radius:6px;padding:2px 7px}
+.task.nowrow{background:#f0fdf4;box-shadow:inset 4px 0 0 #16a34a}
+.tlink{margin-top:8px;border:0;border-radius:10px;background:#eef2f8;color:#0f2747;font-weight:700;font-size:13.5px;padding:8px 12px}
+.nextcard .ngo{margin-top:10px;width:100%;border:0;border-radius:14px;background:rgba(255,255,255,.16);color:#fff;font-weight:700;font-size:15px;padding:11px}

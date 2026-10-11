@@ -9,8 +9,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.svg">
 <title>My Tasks</title>
-<link rel="stylesheet" href="assets/base.css?v=36">
-<link rel="stylesheet" href="assets/theme.css?v=36">
+<link rel="stylesheet" href="assets/base.css?v=37">
+<link rel="stylesheet" href="assets/theme.css?v=37">
 </head>
 <body class="blueprint">
 <div class="app">
@@ -111,12 +111,12 @@
     <div class="grab"></div>
     <h2>New job sold</h2>
     <div class="chips" id="j-mode" style="margin:2px 0 8px"><button type="button" class="chip on" data-m="new">New sale</button><button type="button" class="chip" data-m="old">Already in progress</button></div>
-    <p class="help" id="jHelp">Creates your kickoff checklist (coffee + donuts, photos, DocuSign, sub walkthrough, upsell discovery) plus follow-ups.</p>
+    <p class="help" id="jHelp">Creates your Game Day plan: the 8–9 AM kickoff, the evening call, the upsell push on day 2 and the day-3 check.</p>
     <label for="j-addr">Job address <i class="req">required</i></label>
     <input id="j-addr" placeholder="e.g. 123 Main St, Palm Springs, CA" autocomplete="off">
     <label for="j-name">Customer / project <i class="req">required</i></label>
     <input id="j-name" placeholder="e.g. Martinez kitchen" autocomplete="off">
-    <div id="j-kickwrap"><label>Kickoff day</label>
+    <div id="j-kickwrap"><label>Game Day (day 1)</label>
     <div class="chips" id="kickChips">
       <button type="button" class="chip" data-d="0">Today</button>
       <button type="button" class="chip" data-d="1">Tomorrow</button>
@@ -385,7 +385,7 @@
 <script>
 // Safety net: shows a repair bar if the app fails to start or throws an error. Never deletes your saved tasks.
 (function () {
-  var EXPECT = '36', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
+  var EXPECT = '37', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
   function show(t) { try { msg.textContent = t; bar.hidden = false; } catch (e) {} }
   window.__oafNotify = show;
   window.addEventListener('error', function (e) { if (e.message && /ResizeObserver|Script error/.test(e.message)) return; show('Error: ' + (e.message || 'unknown') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
@@ -411,9 +411,9 @@
   }, 3500);
 })();
 </script>
-<script src="assets/config.js?v=36"></script>
+<script src="assets/config.js?v=37"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="assets/app.js?v=36"></script>
-<script src="assets/sync.js?v=36"></script>
+<script src="assets/app.js?v=37"></script>
+<script src="assets/sync.js?v=37"></script>
 </body>
 </html>
