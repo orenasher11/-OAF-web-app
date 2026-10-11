@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '37';
+  const APP_VERSION = '38';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -1581,6 +1581,7 @@
     { off: 0, gd: 1, title: 'Meet ' + subTxt + ' and introduce them to the client', cat: 'meet', time: '08:00', timeEnd: '09:00' },
     { off: 0, gd: 1, title: 'Take a video with the client', notes: 'Explain exactly what is going to happen and have the client confirm it on camera.', cat: 'video', link: 'video', time: '08:00', timeEnd: '09:00' },
     { off: 0, gd: 1, title: 'Take pictures of the job', cat: 'photo', link: 'photo', time: '08:00', timeEnd: '09:00' },
+    { off: 0, gd: 1, title: 'Take a video testimonial with the client', notes: 'Ask them to say, in their own words, why they chose us and how excited they are about the project.', cat: 'video', link: 'video', key: 'testimonial', time: '08:00', timeEnd: '09:00' },
     { off: 0, gd: 1, title: 'Sign the NTP', cat: 'sign', link: 'stage', time: '08:00', timeEnd: '09:00' },
     { off: 0, gd: 1, title: 'Sniff for upsell', cat: 'upsell', star: true, time: '08:00', timeEnd: '09:00' },
     { off: 0, gd: 1, title: 'Make sure ' + name + ' saved the sales rep\'s number', cat: 'contact', time: '08:00', timeEnd: '09:00' },
@@ -1591,7 +1592,7 @@
     { off: 2, gd: 3, title: 'Update the job status', cat: 'sign', link: 'stage', allDay: true },
   ];
   const planTask = (x, i, n, kick) => ({ id: uid(), done: false, title: x.title, project: n, due: addDays(x.off, kick), cat: x.cat, star: !!x.star, notes: x.notes || '', ord: i, gd: x.gd,
-    ...(x.time ? { time: x.time } : {}), ...(x.timeEnd ? { timeEnd: x.timeEnd } : {}), ...(x.allDay ? { allDay: true } : {}), ...(x.carry ? { carry: true } : {}), ...(x.link ? { link: x.link } : {}) });
+    ...(x.time ? { time: x.time } : {}), ...(x.timeEnd ? { timeEnd: x.timeEnd } : {}), ...(x.allDay ? { allDay: true } : {}), ...(x.carry ? { carry: true } : {}), ...(x.link ? { link: x.link } : {}), ...(x.key ? { key: x.key } : {}) });
   function addKickoff(n, startOff) {
     const subs = getSubs(jobs[n]), subTxt = subs.length ? subs.map(x => x.name).join(' & ') : 'the sub', kick = addDays(startOff);
     kickoffPlan(n, subTxt).forEach((x, i) => tasks.push(planTask(x, i, n, kick)));
@@ -1887,6 +1888,16 @@
     setName(n) { if (n) { OWNER = n; try { localStorage.setItem('oaf-name-v1', n); } catch {} render(); } },
   };
   try { if (!subsDir.length && !localStorage.getItem('oaf-subs-imported')) { importSubsFromJobs(); localStorage.setItem('oaf-subs-imported', '1'); if (subsDir.length) render(); } } catch {}
+  // add the testimonial step to Game Day plans created before it existed (only where day 1 hasn't passed)
+  try {
+    const t0m = todayISO(); let added = 0;
+    [...new Set(tasks.filter(t => t.gd === 1 && t.project).map(t => t.project))].forEach(n => {
+      if (tasks.some(t => t.project === n && t.key === 'testimonial')) return;
+      const anchor = tasks.find(t => t.project === n && t.gd === 1 && t.time === '08:00' && t.timeEnd === '09:00'); if (!anchor || anchor.due < t0m) return;
+      tasks.push({ id: uid(), done: false, title: 'Take a video testimonial with the client', project: n, due: anchor.due, cat: 'video', star: false, notes: 'Ask them to say, in their own words, why they chose us and how excited they are about the project.', ord: 3.5, gd: 1, time: '08:00', timeEnd: '09:00', link: 'video', key: 'testimonial' }); added++;
+    });
+    if (added) { save(); render(); }
+  } catch {}
   window.__oafV = APP_VERSION; window.__oafReady = true;
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     const hadController = !!navigator.serviceWorker.controller; let reloaded = false;
