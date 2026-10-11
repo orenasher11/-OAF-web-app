@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '23';
+  const APP_VERSION = '24';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -310,6 +310,93 @@
     return { msgs, dmy };
   }
   let impParsed = null, impMe = '';
+  // ---- zip support: read WhatsApp "Export Chat -> Attach Media" files without loading the whole zip into memory ----
+  let impZip = null, impWin = 'all', impAbort = false, impBusy = false;
+  async function readZipIndex(file) {
+    const tail = await file.slice(Math.max(0, file.size - 66000), file.size).arrayBuffer(), dv = new DataView(tail); let p = -1;
+    for (let i = tail.byteLength - 22; i >= 0; i--) if (dv.getUint32(i, true) === 0x06054b50) { p = i; break; }
+    if (p < 0) throw new Error('That does not look like a zip file.');
+    const count = dv.getUint16(p + 10, true), cdSize = dv.getUint32(p + 12, true), cdOff = dv.getUint32(p + 16, true);
+    if (cdOff === 0xFFFFFFFF || count === 0xFFFF) throw new Error('That zip is too big (over 4 GB). Export a smaller chat or fewer messages.');
+    const cd = await file.slice(cdOff, cdOff + cdSize).arrayBuffer(), v = new DataView(cd), u8 = new Uint8Array(cd), td = new TextDecoder('utf-8'), out = [];
+    let o = 0;
+    while (o + 46 <= cd.byteLength && v.getUint32(o, true) === 0x02014b50) {
+      const nl = v.getUint16(o + 28, true), el = v.getUint16(o + 30, true), cl = v.getUint16(o + 32, true);
+      out.push({ name: td.decode(u8.subarray(o + 46, o + 46 + nl)), method: v.getUint16(o + 10, true), csize: v.getUint32(o + 20, true), usize: v.getUint32(o + 24, true), lho: v.getUint32(o + 42, true) });
+      o += 46 + nl + el + cl;
+    }
+    return out;
+  }
+  let fflateP = null;
+  const loadFflate = () => fflateP ||= new Promise((res, rej) => { if (window.fflate) return res(window.fflate); const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js'; sc.onload = () => res(window.fflate); sc.onerror = () => rej(new Error('Could not load the unzip helper.')); document.head.appendChild(sc); });
+  async function zipBlob(file, e) {
+    const lh = new DataView(await file.slice(e.lho, e.lho + 30).arrayBuffer());
+    if (lh.getUint32(0, true) !== 0x04034b50) throw new Error('Damaged zip file.');
+    const start = e.lho + 30 + lh.getUint16(26, true) + lh.getUint16(28, true), raw = file.slice(start, start + e.csize);
+    if (e.method === 0) return raw;
+    if (e.method !== 8) throw new Error('Unsupported zip compression.');
+    if (typeof DecompressionStream !== 'undefined') return await new Response(raw.stream().pipeThrough(new DecompressionStream('deflate-raw'))).blob();
+    if (e.usize > 80e6) throw new Error('This file is too big for your phone\'s older browser.');
+    const ff = await loadFflate(); return new Blob([ff.inflateSync(new Uint8Array(await raw.arrayBuffer()))]);
+  }
+  const baseName = n => String(n).split('/').pop().toLowerCase();
+  function attachRef(text) {
+    let m = text.match(/<attached:\s*([^>\n]+)>/i); if (m) return { name: m[1].trim(), rest: text.replace(m[0], '').trim() };
+    m = text.match(/^\s*([^\n]+?\.[A-Za-z0-9]{2,5})\s*\((?:file|fichier|archivo|archivo adjunto|datei)\s+(?:attached|joint|adjunto|angehängt)\)\s*([\s\S]*)$/i);
+    return m ? { name: m[1].trim(), rest: m[2].trim() } : null;
+  }
+  const MIMES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', heic: 'image/heic', mp4: 'video/mp4', mov: 'video/quicktime', m4v: 'video/x-m4v', '3gp': 'video/3gpp', pdf: 'application/pdf', opus: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac', mp3: 'audio/mpeg' };
+  const mimeOf = n => MIMES[(String(n).split('.').pop() || '').toLowerCase()] || 'application/octet-stream';
+  const winCutoff = () => impWin === 'none' ? '9999' : impWin === 'all' ? '' : new Date(Date.now() - (+impWin) * 864e5).toISOString();
+  const mediaMsgs = () => (impParsed ? impParsed.msgs : []).filter(m => m.entry && (!winCutoff() || m.at >= winCutoff()) && m.entry.usize <= 150e6);
+  async function handleZip(file) {
+    $('#impSummary').innerHTML = '<div class="cstat">Reading the zip…</div>';
+    try {
+      const entries = await readZipIndex(file), txt = entries.find(e => /_chat\.txt$/i.test(e.name)) || entries.find(e => /\.txt$/i.test(e.name));
+      if (!txt) throw new Error('I could not find the chat text inside that zip.');
+      const text = await (await zipBlob(file, txt)).text(), map = new Map(); entries.forEach(e => map.set(baseName(e.name), e));
+      impParsed = parseWAChat(text);
+      impParsed.msgs.forEach(m => { m.ref = attachRef(m.text); if (m.ref) m.entry = map.get(baseName(m.ref.name)); });
+      impZip = { file, count: entries.length };
+      const total = impParsed.msgs.filter(m => m.entry).reduce((a, m) => a + m.entry.usize, 0);
+      impWin = total <= 250e6 ? 'all' : '90'; $('#imp-text').value = '';
+      paintImport();
+    } catch (e) { impZip = null; impParsed = null; $('#impSummary').innerHTML = `<div class="cerr">${esc(e.message || 'Could not read that zip.')}</div>`; $('#impGo').disabled = true; }
+  }
+  async function importZip() {
+    if (impBusy) return; impBusy = true; impAbort = false;
+    const j = jobs[curJob] = jobs[curJob] || {}, have = new Map((j.chat || []).map(m => [m.id, m])), media = new Set(mediaMsgs());
+    const total = media.size; let done = 0, added = 0, files = 0, failed = 0; const add = [];
+    $('#impGo').disabled = true; $('#impProg').hidden = false;
+    for (const m of impParsed.msgs.slice(0, 8000)) {
+      if (impAbort) break;
+      const id = 'wa-' + h32(m.at + '|' + m.who + '|' + m.text), mine = impMe !== '__none' && m.who === impMe;
+      let attach, text = m.text;
+      if (m.ref) text = m.ref.rest;
+      if (media.has(m)) {
+        $('#impProg').textContent = `Bringing in photos and files… ${++done} of ${total}`;
+        const ex = have.get(id);
+        if (!(ex && ex.attach && ex.attach.length)) {
+          try {
+            let blob = await zipBlob(impZip.file, m.entry); const nm = m.ref.name, mime = mimeOf(nm), k = /^image\//.test(mime) ? 'image' : /^video\//.test(mime) ? 'video' : 'file';
+            if (k === 'image' && blob.size > 900e3) { const sh = await shrinkImage(new File([blob], nm, { type: mime })); blob = sh; }
+            const mid = 'wam-' + h32(m.at + nm);
+            await putFile({ id: mid, job: curJob, name: nm, mime: blob.type || mime, size: blob.size, blob });
+            attach = [{ id: mid, kind: k, name: nm, size: blob.size, mime: blob.type || mime }]; files++;
+          } catch (e) { failed++; text = (text ? text + '\n' : '') + '📎 ' + m.ref.name + ' (could not import)'; }
+        }
+        if (done % 6 === 0) await new Promise(r => setTimeout(r, 0));
+      } else if (m.ref) text = (text ? text + '\n' : '') + '📎 ' + m.ref.name;
+      const ex = have.get(id);
+      if (ex) { if (attach && !(ex.attach && ex.attach.length)) { ex.attach = attach; ex.text = text; added++; } continue; }
+      const rec = { id, at: m.at, kind: mine ? 'out' : 'in', ...(mine ? { by: m.who } : { who: m.who }), text, via: 'wa', imp: true, ...(attach ? { attach } : {}) };
+      have.set(id, rec); add.push(rec); added++;
+    }
+    j.chat = [...(j.chat || []), ...add].sort((a, b) => String(a.at).localeCompare(String(b.at)));
+    saveJobs(); impBusy = false; $('#impProg').hidden = true; $('#impBg').classList.remove('open'); chatLimit = 300; render();
+    toast(impAbort ? `Stopped. Imported ${added} messages so far.` : `Imported ${added} messages and ${files} files${failed ? ` (${failed} could not be read)` : ''}`);
+    try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
+  }
   function paintImport() {
     const el = $('#impSummary'), r = impParsed;
     if (!r || !r.msgs.length) { el.innerHTML = $('#imp-text').value.trim() ? '<div class="cerr">I could not find WhatsApp messages in that text. Paste the chat the way WhatsApp copies it, or choose the exported .txt file.</div>' : ''; $('#impGo').disabled = true; return; }
@@ -320,16 +407,29 @@
     el.innerHTML = `<div class="cok">Found <b>${r.msgs.length}</b> messages<br><small>${f(first)} to ${f(last)} · dates read as ${r.dmy ? 'day/month' : 'month/day'}</small></div>
       <label>Which person is you?</label>` + names.map(n => `<label class="rcpt"><input type="radio" name="impme" value="${esc(n)}" ${impMe === n ? 'checked' : ''}><span><b>${esc(n)}</b><small>${by[n]} messages</small></span></label>`).join('')
       + `<label class="rcpt"><input type="radio" name="impme" value="__none" ${impMe === '__none' ? 'checked' : ''}><span><b>None of them</b><small>I wasn't in this chat</small></span></label>`;
-    $('#impGo').disabled = false; $('#impGo').textContent = `Import ${r.msgs.length} messages`;
+    if (impZip) {
+      const all = r.msgs.filter(m => m.entry), sel = mediaMsgs(), mb = x => (x.reduce((a, m) => a + m.entry.usize, 0) / 1048576).toFixed(0);
+      el.innerHTML += `<label>Photos, videos and files to bring in</label>
+        <div class="chips" id="impWin">${[['all', 'Everything'], ['90', 'Last 90 days'], ['30', 'Last 30 days'], ['none', 'None']].map(([k, l]) => `<button type="button" class="chip ${impWin === k ? 'on' : ''}" data-w="${k}">${l}</button>`).join('')}</div>
+        <div class="cstat">${all.length} files in this chat. Bringing in <b>${sel.length}</b> (${mb(sel)} MB). They are saved on your phone.</div>`;
+    }
+    $('#impGo').disabled = false; $('#impGo').textContent = impZip ? `Import messages + ${mediaMsgs().length} files` : `Import ${r.msgs.length} messages`;
   }
   let impTimer = null;
-  $('#imp-text').addEventListener('input', () => { clearTimeout(impTimer); impTimer = setTimeout(() => { impParsed = parseWAChat($('#imp-text').value); paintImport(); }, 250); });
-  $('#imp-file').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const t = await f.text(); $('#imp-text').value = t.length > 400000 ? t.slice(0, 400000) : t; impParsed = parseWAChat(t); paintImport(); } catch { toast('Could not read that file'); } e.target.value = ''; };
+  $('#imp-text').addEventListener('input', () => { impZip = null; clearTimeout(impTimer); impTimer = setTimeout(() => { impParsed = parseWAChat($('#imp-text').value); paintImport(); }, 250); });
+  $('#imp-file').onchange = async e => {
+    const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    impZip = null;
+    if (/\.zip$/i.test(f.name) || /zip/.test(f.type)) return handleZip(f);
+    try { const t = await f.text(); $('#imp-text').value = t.length > 400000 ? t.slice(0, 400000) : t; impParsed = parseWAChat(t); paintImport(); } catch { toast('Could not read that file'); }
+  };
+  $('#impSummary').addEventListener('click', e => { const c = e.target.closest('[data-w]'); if (c) { impWin = c.dataset.w; paintImport(); } });
   $('#impSummary').onchange = e => { if (e.target.name === 'impme') impMe = e.target.value; };
-  $('#impCancel').onclick = () => $('#impBg').classList.remove('open');
-  $('#impBg').onclick = e => { if (e.target.id === 'impBg') $('#impBg').classList.remove('open'); };
+  $('#impCancel').onclick = () => { if (impBusy) { impAbort = true; return; } $('#impBg').classList.remove('open'); };
+  $('#impBg').onclick = e => { if (e.target.id === 'impBg' && !impBusy) $('#impBg').classList.remove('open'); };
   $('#impGo').onclick = () => {
     if (!impParsed || !impParsed.msgs.length) return;
+    if (impZip) return importZip();
     const j = jobs[curJob] = jobs[curJob] || {}, have = new Set((j.chat || []).map(m => m.id)); let added = 0;
     const add = [];
     impParsed.msgs.slice(0, 8000).forEach((m, i) => {
@@ -342,7 +442,7 @@
     saveJobs(); $('#impBg').classList.remove('open'); chatLimit = 300; render();
     toast(`Imported ${added} messages${impParsed.msgs.length - added > 0 ? ` (${impParsed.msgs.length - added} were already here)` : ''}`);
   };
-  function openImport() { impParsed = null; impMe = ''; $('#imp-text').value = ''; $('#impSummary').innerHTML = ''; $('#impGo').disabled = true; $('#impGo').textContent = 'Import'; $('#impBg').classList.add('open'); }
+  function openImport() { impParsed = null; impMe = ''; impZip = null; impBusy = false; $('#impProg').hidden = true; $('#imp-text').value = ''; $('#impSummary').innerHTML = ''; $('#impGo').disabled = true; $('#impGo').textContent = 'Import'; $('#impBg').classList.add('open'); }
 
   // paste copied WhatsApp messages: "[10/10/26, 11:18 PM] Name: text" (also "10/10/26, 11:18 PM - Name: text")
   function parseWhatsApp(text) {

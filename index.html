@@ -9,8 +9,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.svg">
 <title>My Tasks</title>
-<link rel="stylesheet" href="assets/base.css?v=23">
-<link rel="stylesheet" href="assets/theme.css?v=23">
+<link rel="stylesheet" href="assets/base.css?v=24">
+<link rel="stylesheet" href="assets/theme.css?v=24">
 </head>
 <body class="blueprint">
 <div class="app">
@@ -244,10 +244,11 @@
   <div class="sheet" role="dialog">
     <div class="grab"></div>
     <h2>Import WhatsApp chat</h2>
-    <p class="help">In WhatsApp, open the group, touch and hold a message, tap <b>Select</b>, choose the messages (or tap the first and scroll), tap <b>Copy</b>. Then paste here. Or choose a chat you exported with <b>Export Chat → Without Media</b>.</p>
+    <p class="help">In WhatsApp, open the group, touch and hold a message, tap <b>Select</b>, choose the messages (or tap the first and scroll), tap <b>Copy</b>. Then paste here. Or use <b>Export Chat</b> in the group's menu: <b>Attach Media</b> brings the photos and videos too (a .zip). <b>Without Media</b> gives text only.</p>
     <textarea id="imp-text" class="msgtext" placeholder="Paste the WhatsApp messages here"></textarea>
-    <label class="filebtn">📄 Choose exported chat file (.txt)<input type="file" id="imp-file" accept=".txt,text/plain" hidden></label>
+    <label class="filebtn">📦 Choose exported chat (.zip with photos, or .txt)<input type="file" id="imp-file" accept=".zip,.txt,application/zip,text/plain" hidden></label>
     <div id="impSummary"></div>
+    <div class="cstat" id="impProg" hidden></div>
     <div class="actions"><button class="btn ghost" id="impCancel">Cancel</button><button class="btn primary" id="impGo" disabled>Import</button></div>
   </div>
 </div>
@@ -328,7 +329,7 @@
 <script>
 // Safety net: shows a repair bar if the app fails to start or throws an error. Never deletes your saved tasks.
 (function () {
-  var EXPECT = '23', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
+  var EXPECT = '24', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
   function show(t) { try { msg.textContent = t; bar.hidden = false; } catch (e) {} }
   window.__oafNotify = show;
   window.addEventListener('error', function (e) { if (e.message && /ResizeObserver|Script error/.test(e.message)) return; show('Error: ' + (e.message || 'unknown') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
@@ -354,9 +355,9 @@
   }, 3500);
 })();
 </script>
-<script src="assets/config.js?v=23"></script>
+<script src="assets/config.js?v=24"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="assets/app.js?v=23"></script>
-<script src="assets/sync.js?v=23"></script>
+<script src="assets/app.js?v=24"></script>
+<script src="assets/sync.js?v=24"></script>
 </body>
 </html>
