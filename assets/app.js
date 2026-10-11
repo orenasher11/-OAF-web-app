@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '30';
+  const APP_VERSION = '31';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -53,6 +53,9 @@
   let leads = [], reports = [], moneyPer = 'month';
   try { leads = JSON.parse(localStorage.getItem('oaf-leads-v1')) || []; } catch {}
   try { reports = JSON.parse(localStorage.getItem('oaf-reports-v1')) || []; } catch {}
+  let subsDir = [];
+  try { subsDir = JSON.parse(localStorage.getItem('oaf-subsdir-v1')) || []; } catch {}
+  const saveSubsDir = () => { try { localStorage.setItem('oaf-subsdir-v1', JSON.stringify(subsDir)); } catch {} changed(); };
   const saveLeads = () => { try { localStorage.setItem('oaf-leads-v1', JSON.stringify(leads)); } catch {} changed(); };
   const saveReports = () => { try { localStorage.setItem('oaf-reports-v1', JSON.stringify(reports)); } catch {} changed(); };
   const JOBS_KEY = 'oaf-jobs-v1';        // per-project info: upsell potential, sub
@@ -734,26 +737,106 @@
     if (!cfg.finance.length) cfg.finance = FIN_DEFAULT.slice();
     saveCfg(); $('#finBg').classList.remove('open'); render(); toast('Finance list saved');
   };
-  // ---- subs directory (every sub across all jobs) ----
-  function subDirectory() {
-    const m = new Map();
-    Object.entries(jobs).forEach(([n, j]) => getSubs(j).forEach(x => {
-      const key = (x.name || '').trim().toLowerCase() + '|' + String(x.phone || '').replace(/\D/g, '');
-      const e = m.get(key) || { name: x.name, trade: x.trade || '', phone: x.phone || '', jobs: [] };
-      if (!e.trade && x.trade) e.trade = x.trade; if (!e.phone && x.phone) e.phone = x.phone;
-      e.jobs.push(n); m.set(key, e);
-    }));
-    return [...m.values()].sort((a, b) => a.name.localeCompare(b.name));
+  // ---- contractors: a shared list reps pick from, grouped by trade ----
+  const TRADES = [
+    ['General contractor', '🏗️', '#0f2747', /general|\bgc\b|contractor/i], ['Plumbing', '🚰', '#2563eb', /plumb/i], ['Electrical', '⚡', '#ca8a04', /electr/i],
+    ['HVAC', '❄️', '#0891b2', /hvac|air|heat|cool/i], ['Roofing', '🏠', '#b45309', /roof/i], ['Tile', '🔲', '#0d9488', /tile/i], ['Flooring', '🪵', '#a16207', /floor/i],
+    ['Painting', '🎨', '#db2777', /paint/i], ['Drywall', '🧱', '#78716c', /drywall|sheetrock|plaster/i], ['Framing & carpentry', '🪚', '#92400e', /fram|carpent|wood/i],
+    ['Concrete & masonry', '🏗', '#57534e', /concrete|mason|brick|stucco/i], ['Landscaping', '🌿', '#16a34a', /landsc|turf|garden|irrig|sprinkl/i], ['Solar', '☀️', '#d97706', /solar|panel/i],
+    ['Windows & doors', '🪟', '#0284c7', /window|door|glass/i], ['Cabinets & counters', '🗄️', '#7c3aed', /cabinet|counter|granite|quartz/i], ['Demolition', '🔨', '#dc2626', /demo/i],
+    ['Pool', '🏊', '#0ea5e9', /pool|spa/i], ['Permits & plans', '📋', '#475569', /permit|plan|engineer|architect|expedit/i], ['Cleaning', '🧹', '#059669', /clean|junk|haul/i], ['Other', '🔧', '#64748b', /^$/],
+  ];
+  const PAL = ['#0f766e', '#7c3aed', '#be123c', '#1d4ed8', '#b45309', '#4d7c0f', '#a21caf'];
+  function tradeInfo(name) {
+    const t = String(name || '').trim(); if (!t) return { label: 'Other', emoji: '🔧', color: '#64748b' };
+    const hit = TRADES.find(x => x[0].toLowerCase() === t.toLowerCase()) || TRADES.slice(0, -1).find(x => x[3].test(t));
+    if (hit) return { label: hit[0], emoji: hit[1], color: hit[2] };
+    return { label: t.charAt(0).toUpperCase() + t.slice(1), emoji: '🔧', color: PAL[[...t].reduce((h, c) => h + c.charCodeAt(0), 0) % PAL.length] };
   }
-  function screenSubs() {
-    const list = subDirectory();
-    return `<div class="schat"><input id="subq" placeholder="Search subs by name or trade" autocomplete="off"></div>` + (list.length ? `<div class="scard" id="subList">` + list.map((x, i) => `<div class="mrow" data-act="subdir" data-i="${i}" data-q="${esc((x.name + ' ' + x.trade).toLowerCase())}"><span class="mav sq" style="background:${nameColor(x.name)}">🔧</span><span class="mbody"><b>${esc(x.name)}</b><small>${esc(x.trade || 'Sub')} · ${x.jobs.length} ${x.jobs.length === 1 ? 'job' : 'jobs'}${x.phone ? ' · ' + esc(x.phone) : ''}</small></span>${hasPhone(x.phone) ? `<a class="mcall" href="tel:${esc(cleanPhone(x.phone))}" aria-label="Call">📞</a>` : ''}</div>`).join('') + `</div>`
-      : `<div class="empty small"><div class="big">🔧</div>No subs yet. Add subs to a job (Edit job, or the Subs section on its info screen) and they show up here.</div>`);
+  const dirKey = x => (x.name || '').trim().toLowerCase() + '|' + String(x.phone || '').replace(/\D/g, '');
+  const jobsUsing = x => Object.values(jobs).filter(j => j && getSubs(j).some(sb => (sb.dirId && sb.dirId === x.id) || dirKey(sb) === dirKey(x))).length;
+  function importSubsFromJobs() {
+    const have = new Set(subsDir.map(dirKey)); let n = 0;
+    Object.values(jobs).forEach(j => { if (!j || j.demo) return; getSubs(j).forEach(x => { if (!x.name) return; const k = dirKey(x); if (have.has(k)) return; have.add(k); subsDir.push({ id: uid(), name: x.name, trade: x.trade || '', phone: x.phone || '', company: '', notes: '', fav: false }); n++; }); });
+    if (n) saveSubsDir(); return n;
   }
-  function subDirMenu(i) {
-    const x = subDirectory()[i]; if (!x) return;
-    personMenu({ ...x, role: x.trade || 'Sub' }, x.jobs.slice(0, 6).map(n => ({ label: '📁 ' + (jobs[n] && jobs[n].addr ? jobs[n].addr : n), fn: () => { curJob = n; jobTab = 'chat'; tabHist = []; view = 'job'; render(); } })));
+  let subQ = '', subTrade = 'all', pickJob = '', pickSel = new Set(), cnEditId = null, cnTradeSel = '';
+  function callChoice(name, phone) {
+    if (!hasPhone(phone)) { toast('No phone number saved for ' + (name || 'this person')); return; }
+    openPick('Call ' + (name || ''), [
+      { label: '📞 Phone call', fn: () => { location.href = 'tel:' + cleanPhone(phone); } },
+      { label: '🟢 WhatsApp (opens the chat, tap its call icon)', fn: () => { location.href = 'https://wa.me/' + waNum(phone); } },
+      { label: '💬 Text message', fn: () => { location.href = smsHref(phone, ''); } },
+    ]);
   }
+  function openSubPicker(n) {
+    if (!subsDir.length) importSubsFromJobs();
+    const j = jobs[n] || {}, sel = new Set();
+    getSubs(j).forEach(sb => { const d = subsDir.find(x => (sb.dirId && sb.dirId === x.id) || dirKey(x) === dirKey(sb)); if (d) sel.add(d.id); });
+    pickJob = n; pickSel = sel; subQ = ''; subTrade = 'all'; view = 'subs'; render(); window.scrollTo(0, 0);
+  }
+  function applyPick() {
+    const j = jobs[pickJob] = jobs[pickJob] || {}, chosen = subsDir.filter(x => pickSel.has(x.id));
+    const keepManual = getSubs(j).filter(sb => !sb.dirId && !subsDir.some(d => dirKey(d) === dirKey(sb)));
+    j.subs = [...keepManual, ...chosen.map(x => ({ name: x.name, trade: x.trade || '', phone: x.phone || '', dirId: x.id }))]; j.sub = undefined; j.phone = undefined;
+    saveJobs(); const n = pickJob; pickJob = ''; curJob = n; jobTab = 'info'; tabHist = ['chat']; view = 'job'; render(); window.scrollTo(0, 0);
+    toast(chosen.length ? `${chosen.length} ${chosen.length === 1 ? 'sub' : 'subs'} on this job` : 'No subs on this job');
+  }
+  function screenContractors() {
+    const picking = !!pickJob, groups = {};
+    subsDir.forEach(x => { const ti = tradeInfo(x.trade); (groups[ti.label] ||= { ti, items: [] }).items.push(x); });
+    const labels = Object.keys(groups).sort((a, b) => a === 'Other' ? 1 : b === 'Other' ? -1 : a.localeCompare(b));
+    if (subTrade !== 'all' && !groups[subTrade]) subTrade = 'all';
+    const chips = `<div class="stagef trades"><button class="${subTrade === 'all' ? 'on' : ''}" data-act="subtrade" data-t="all">All ${subsDir.length}</button>${labels.map(l => `<button class="${subTrade === l ? 'on' : ''}" style="--c:${groups[l].ti.color}" data-act="subtrade" data-t="${esc(l)}">${groups[l].ti.emoji} ${esc(l)} ${groups[l].items.length}</button>`).join('')}</div>`;
+    const card = x => { const ti = tradeInfo(x.trade), sel = pickSel.has(x.id), used = jobsUsing(x);
+      return `<div class="ccard ${sel ? 'sel' : ''}" style="--c:${ti.color}" data-id="${x.id}" data-act="${picking ? 'subpick' : 'subopen'}" data-q="${esc((x.name + ' ' + (x.trade || '') + ' ' + (x.company || '') + ' ' + (x.phone || '')).toLowerCase())}">
+        <span class="cav">${ti.emoji}</span>
+        <span class="cbody"><b>${esc(x.name)}${x.fav ? ' <i class="favs">♥</i>' : ''}</b><small>${esc([x.company, x.phone].filter(Boolean).join(' · ') || 'No phone yet')}</small>${used ? `<small class="cused">Used on ${used} ${used === 1 ? 'job' : 'jobs'}</small>` : ''}</span>
+        ${picking ? `<span class="ccheck">${sel ? '✓' : ''}</span>` : `<span class="cright"><button class="cfav ${x.fav ? 'on' : ''}" data-act="subfav" aria-label="Favorite">${x.fav ? '♥' : '♡'}</button>${hasPhone(x.phone) ? `<button class="ccall" data-act="subcall" aria-label="Call">📞</button>` : ''}</span>`}</div>`; };
+    const body = labels.filter(l => subTrade === 'all' || subTrade === l).map(l => { const g = groups[l];
+      return `<div class="tgroup"><div class="thead" style="--c:${g.ti.color}"><span class="temoji">${g.ti.emoji}</span><b>${esc(l)}</b><span class="tcount">${g.items.length}</span></div>${g.items.slice().sort((a, b) => (b.fav ? 1 : 0) - (a.fav ? 1 : 0) || a.name.localeCompare(b.name)).map(card).join('')}</div>`; }).join('');
+    const jb = pickJob ? (jobs[pickJob] || {}) : null;
+    return (picking ? `<div class="pickbanner">Choose the subs for <b>${esc(jb.addr || pickJob)}</b>. Tap a contractor to select.</div>` : '')
+      + `<div class="schat"><input id="subq" value="${esc(subQ)}" placeholder="Search by name, trade or company" autocomplete="off"></div>` + chips
+      + `<div class="jobactions"><button class="jbtn primary" data-act="subnew">＋ Add contractor</button>${subsDir.length ? '' : `<button class="jbtn" data-act="subimport">⬇ Add the subs from my jobs</button>`}</div>`
+      + (subsDir.length ? body : `<div class="empty small"><div class="big">🧰</div>Your contractor list is empty. Add your subs once, and every rep can pick them from here, sorted by trade.</div>`)
+      + (picking ? `<div class="pickbar"><span><b>${pickSel.size}</b> selected</span><button data-act="pickdone">Add to this job</button></div>` : '');
+  }
+  function applySubFilter() {
+    const q = subQ.trim().toLowerCase();
+    document.querySelectorAll('.ccard').forEach(r => { r.style.display = !q || r.dataset.q.includes(q) ? '' : 'none'; });
+    document.querySelectorAll('.tgroup').forEach(g => { g.style.display = [...g.querySelectorAll('.ccard')].some(c => c.style.display !== 'none') ? '' : 'none'; });
+  }
+  function contractorMenu(id) {
+    const x = subsDir.find(y => y.id === id); if (!x) return; const used = Object.entries(jobs).filter(([, j]) => j && getSubs(j).some(sb => (sb.dirId && sb.dirId === x.id) || dirKey(sb) === dirKey(x))).map(([n]) => n);
+    const items = [{ label: '📞 Call or message ' + x.name, fn: () => callChoice(x.name, x.phone) }, { label: '✎ Edit', fn: () => openContractor(x.id) }];
+    used.slice(0, 5).forEach(n => items.push({ label: '📁 ' + ((jobs[n] || {}).addr || n), fn: () => { curJob = n; jobTab = 'chat'; tabHist = []; view = 'job'; render(); } }));
+    openPick(`${tradeInfo(x.trade).emoji} ${x.name}`, items);
+  }
+  function paintTradeChips() {
+    $('#cn-trades').innerHTML = TRADES.map(t => `<button type="button" class="chip ${cnTradeSel.toLowerCase() === t[0].toLowerCase() ? 'on' : ''}" data-tr="${esc(t[0])}">${t[1]} ${esc(t[0])}</button>`).join('');
+  }
+  function openContractor(id) {
+    cnEditId = id || null; const x = id ? subsDir.find(y => y.id === id) : null;
+    $('#cnTitle').textContent = x ? 'Edit contractor' : 'Add contractor';
+    $('#cn-name').value = x ? x.name : ''; $('#cn-phone').value = x ? x.phone || '' : ''; $('#cn-co').value = x ? x.company || '' : ''; $('#cn-notes').value = x ? x.notes || '' : '';
+    cnTradeSel = x ? tradeInfo(x.trade).label : (subTrade !== 'all' ? subTrade : ''); $('#cn-trade').value = x && !TRADES.some(t => t[0] === tradeInfo(x.trade).label) ? x.trade : '';
+    paintTradeChips(); $('#cnDel').hidden = !x; $('#cnBg').classList.add('open'); if (!x) setTimeout(() => $('#cn-name').focus(), 60);
+  }
+  $('#cn-trades').onclick = e => { const c = e.target.closest('[data-tr]'); if (c) { cnTradeSel = c.dataset.tr; $('#cn-trade').value = ''; paintTradeChips(); } };
+  $('#cn-trade').addEventListener('input', () => { cnTradeSel = ''; paintTradeChips(); });
+  $('#cnCancel').onclick = () => $('#cnBg').classList.remove('open');
+  $('#cnBg').onclick = e => { if (e.target.id === 'cnBg') $('#cnBg').classList.remove('open'); };
+  $('#cnDel').onclick = () => { if (cnEditId && confirm('Remove this contractor from the list? Jobs keep their copy.')) { subsDir = subsDir.filter(y => y.id !== cnEditId); pickSel.delete(cnEditId); saveSubsDir(); $('#cnBg').classList.remove('open'); render(); } };
+  $('#cnSave').onclick = () => {
+    const name = $('#cn-name').value.trim(); if (!name) { $('#cn-name').focus(); return; }
+    const trade = ($('#cn-trade').value.trim() || cnTradeSel || '');
+    const data = { name, trade, phone: $('#cn-phone').value.trim(), company: $('#cn-co').value.trim(), notes: $('#cn-notes').value.trim() };
+    if (cnEditId) Object.assign(subsDir.find(y => y.id === cnEditId), data); else { const rec = { id: uid(), fav: false, ...data }; subsDir.push(rec); if (pickJob) pickSel.add(rec.id); }
+    saveSubsDir(); $('#cnBg').classList.remove('open'); render(); toast('Saved');
+  };
+  const subDirectory = () => subsDir;
+  const screenSubs = screenContractors;
 
   // ---- WhatsApp-style group info screens ----
   let tabHist = [], mediaTab = 'media', chatSearch = false, pendingJump = null;
@@ -776,8 +859,8 @@
   function callPeople(n) {
     const m = [...membersOf(n), ...getSubs(jobs[n]).map(x => ({ ...x, role: x.trade || 'Sub', kind: 'sub' }))].filter(x => hasPhone(x.phone));
     if (!m.length) { toast('Add a phone number first (Edit job, or My team in More)'); return; }
-    if (m.length === 1) { location.href = 'tel:' + cleanPhone(m[0].phone); return; }
-    openPick('Who do you want to call?', m.map(x => ({ label: '📞 ' + label2(x), fn: () => { location.href = 'tel:' + cleanPhone(x.phone); } })));
+    if (m.length === 1) { callChoice(m[0].name, m[0].phone); return; }
+    openPick('Who do you want to call?', m.map(x => ({ label: '📞 ' + label2(x), fn: () => callChoice(x.name, x.phone) })));
   }
   function personMenu(x, extra = []) {
     const items = [];
@@ -849,11 +932,11 @@
         <button class="srow addm" data-act="finadd"><span class="sico">＋</span><span class="slbl">Add finance company</span></button></div>
       <div class="ssec">${mem.length + 1 + BOTS.length} members</div><div class="scard">
         <div class="mrow me">${`<span class="mav" style="background:#0f2747">${esc((OWNER || 'Y')[0])}</span>`}<span class="mbody"><b>${esc(OWNER || 'You')}</b><small>You</small></span></div>
-        ${mem.map((x, i) => `<div class="mrow" data-act="member" data-i="${i}">${avatar(x)}<span class="mbody"><b>${esc(x.name)}</b><small>${esc(x.role || '')}${x.phone ? ' · ' + esc(x.phone) : ' · no phone'}</small></span>${hasPhone(x.phone) ? `<a class="mcall" href="tel:${esc(cleanPhone(x.phone))}" aria-label="Call">📞</a>` : ''}</div>`).join('')}
+        ${mem.map((x, i) => `<div class="mrow" data-act="member" data-i="${i}">${avatar(x)}<span class="mbody"><b>${esc(x.name)}</b><small>${esc(x.role || '')}${x.phone ? ' · ' + esc(x.phone) : ' · no phone'}</small></span>${hasPhone(x.phone) ? `<a class="mcall" href="tel:${esc(cleanPhone(x.phone))}" data-name="${esc(x.name)}" data-phone="${esc(x.phone)}" aria-label="Call">📞</a>` : ''}</div>`).join('')}
         ${BOTS.map(b => `<div class="mrow"><span class="mav" style="background:#ff6a1a">🤖</span><span class="mbody"><b>${esc(b.name)}</b><small>${esc(b.role)}</small></span></div>`).join('')}
         <button class="srow addm" data-act="addmember"><span class="sico">＋</span><span class="slbl">Add partner or rep</span></button></div>
       <div class="ssec">${subsL.length} ${subsL.length === 1 ? 'sub' : 'subs'} on this job</div><div class="scard">
-        ${subsL.map((x, i) => `<div class="mrow" data-act="subrow" data-i="${i}"><span class="mav sq" style="background:${nameColor(x.name)}">🔧</span><span class="mbody"><b>${esc(x.name)}</b><small>${esc(x.trade || 'Sub')}${x.phone ? ' · ' + esc(x.phone) : ' · no phone'}</small></span>${hasPhone(x.phone) ? `<a class="mcall" href="tel:${esc(cleanPhone(x.phone))}" aria-label="Call">📞</a>` : ''}</div>`).join('')}
+        ${subsL.map((x, i) => `<div class="mrow" data-act="subrow" data-i="${i}"><span class="mav sq" style="background:${nameColor(x.name)}">🔧</span><span class="mbody"><b>${esc(x.name)}</b><small>${esc(x.trade || 'Sub')}${x.phone ? ' · ' + esc(x.phone) : ' · no phone'}</small></span>${hasPhone(x.phone) ? `<a class="mcall" href="tel:${esc(cleanPhone(x.phone))}" data-name="${esc(x.name)}" data-phone="${esc(x.phone)}" aria-label="Call">📞</a>` : ''}</div>`).join('')}
         <button class="srow addm" data-act="addsub"><span class="sico">＋</span><span class="slbl">Add sub</span></button></div>
       <div class="ssec">Job settings</div><div class="scard">
         ${srow('💰', 'Upsell potential', j.upsell ? money(j.upsell) : 'Set', 'upsell', `data-p="${esc(n)}"`)}
@@ -992,8 +1075,8 @@
       $('#h1').textContent = 'Leads'; $('#sub').textContent = dueN ? `${dueN} to follow up today` : 'Your pipeline';
       html += screenLeads();
     } else if (view === 'subs') {
-      $('#h1').textContent = 'Subs'; $('#sub').textContent = 'Everyone you work with across all jobs';
-      html += screenSubs();
+      $('#h1').textContent = pickJob ? 'Pick your subs' : 'Contractors'; $('#sub').textContent = pickJob ? 'Select as many as you need' : 'Your subs, sorted by trade';
+      html += screenContractors();
     } else if (view === 'money') {
       $('#h1').textContent = 'Money'; $('#sub').textContent = 'Commissions, overrides and upsells';
       html += screenMoney();
@@ -1004,7 +1087,7 @@
         ${srow('🚗', 'Site visits', lateV ? `<b class="red">${lateV} overdue</b>` : '', 'go', 'data-v="visits"')}
         ${srow('📅', 'Calendar &amp; routes', '', 'go', 'data-v="calendar"')}
         ${srow('🗓️', 'Upcoming tasks', '', 'go', 'data-v="upcoming"')}
-        ${srow('🔧', 'Subs directory', subDirectory().length || '', 'go', 'data-v="subs"')}
+        ${srow('🧰', 'Contractors by trade', subsDir.length || '', 'go', 'data-v="subs"')}
         ${srow('🏦', 'Finance companies', '', 'finedit')}
         ${srow('📊', 'Rep reports &amp; scorecards', '', 'go', 'data-v="reports"')}
         ${srow('🌙', 'Evening review', '', 'go', 'data-v="evening"')}</div>
@@ -1101,7 +1184,7 @@
     const SUBS = ['visits', 'calendar', 'upcoming', 'reports', 'subs'];
     $('#jobbar').hidden = !['today', 'projects'].includes(view);
     $('#back').hidden = !(view === 'job' || view === 'evening' || SUBS.includes(view));
-    $('#back').textContent = view === 'evening' ? '‹ Today' : view === 'job' ? '‹ Jobs' : '‹ More';
+    $('#back').textContent = view === 'evening' ? '‹ Today' : view === 'job' ? '‹ Jobs' : view === 'subs' && pickJob ? '‹ Job' : '‹ More';
     const lateN = visitList().filter(v => v.state === 'late').length;
     $('#mbadge').textContent = lateN || ''; $('#mbadge').hidden = !lateN;
     const ldN = leadsDue().length; $('#lbadge').textContent = ldN || ''; $('#lbadge').hidden = !ldN;
@@ -1121,7 +1204,7 @@
       if (jt) { jt.scrollIntoView({ block: 'center' }); jt.classList.add('flash'); setTimeout(() => jt.classList.remove('flash'), 1800); } else window.scrollTo(0, document.body.scrollHeight);
       pendingJump = null;
     }); }
-    hydrateMedia();
+    hydrateMedia(); if (view === 'subs') applySubFilter();
     $('#projList').innerHTML = [...new Set(tasks.map(t => t.project).filter(Boolean))].map(p => `<option value="${esc(p)}">`).join('');
   }
 
@@ -1313,7 +1396,7 @@
   function pressStart(e) { const b = bubOf(e); if (!b) return; pressed = false; clearTimeout(pressTimer); pressTimer = setTimeout(() => { pressed = true; msgMenu(b.dataset.id, b.dataset.k); }, 550); }
   const pressEnd = () => clearTimeout(pressTimer);
   $('#main').addEventListener('input', e => {
-    if (e.target.id === 'subq') { const q = e.target.value.trim().toLowerCase(); document.querySelectorAll('#subList .mrow').forEach(r => { r.style.display = !q || r.dataset.q.includes(q) ? '' : 'none'; }); return; }
+    if (e.target.id === 'subq') { subQ = e.target.value; applySubFilter(); return; }
     if (e.target.id !== 'sq') return; const q = e.target.value.trim().toLowerCase();
     document.querySelectorAll('.bub').forEach(b => { b.style.display = !q || b.textContent.toLowerCase().includes(q) ? '' : 'none'; });
   });
@@ -1364,11 +1447,17 @@
       [C]: { demo: true, stage: 'PRE NTP', stages: ['PRE NTP'], stageLog: [{ stage: 'PRE NTP', at: ago(10) }], fins: [{ id: 'demo-f3', company: 'Homerun', status: 'Applied', amount: 0, approved: 60000 }, { id: 'demo-f4', company: 'Figure', status: 'Approved', amount: 0, approved: 25000 }], addr: '900 Sunset Blvd, San Bernardino, CA', upsell: 45000, kick: d(1), every: 5,
         subs: [{ name: 'Tony', trade: 'General', phone: '909 555 0104' }], chat: [] },
     };
+    const D = (n, trade, phone, co, fav) => ({ id: 'demo-c' + n, demo: true, name: n, trade, phone, company: co || '', notes: '', fav: !!fav });
+    subsDir = [...subsDir.filter(x => !x.demo), D('Carlos Ramirez', 'Plumbing', '760 555 0101', 'Ramirez Plumbing', 1), D('Mike Dunn', 'Electrical', '760 555 0102', 'Dunn Electric'), D('Tony Vega', 'General contractor', '909 555 0104', 'Vega Builders', 1),
+      D('Dave Kim', 'Tile', '760 555 0103', 'Kim Tile & Stone'), D('Ana Lopez', 'Tile', '951 555 0120', 'Lopez Tile'), D('Sam Ortiz', 'Roofing', '951 555 0121', 'Ortiz Roofing'), D('Priya Shah', 'Painting', '310 555 0122', 'Fresh Coat'),
+      D('Luis Mora', 'HVAC', '626 555 0123', 'CoolAir'), D('Jen Park', 'Landscaping', '760 555 0124', 'Green Desert'), D('Omar Haddad', 'Flooring', '909 555 0125', 'Haddad Floors'), D('Bree Cole', 'Solar', '760 555 0126', 'SunPeak')];
+    saveSubsDir();
     tasks = [...tasks.filter(x => !x.demo), ...t]; Object.assign(jobs, jb);
     save(); saveJobs(); view = 'today'; filter = 'all'; render(); window.scrollTo(0, 0);
     toast('Sample jobs added. Tap Projects to explore.');
   }
   function clearDemo() {
+    subsDir = subsDir.filter(x => !x.demo); saveSubsDir();
     tasks = tasks.filter(x => !x.demo); Object.keys(jobs).forEach(k => { if (jobs[k] && jobs[k].demo) delete jobs[k]; });
     save(); saveJobs(); render(); toast('Sample jobs removed');
   }
@@ -1451,6 +1540,7 @@
     $('#subRows').appendChild(d);
   }
   $('#addSub').onclick = () => addSubRow();
+  $('#pickFromList').onclick = () => { const n = editName; closeEdit(); openSubPicker(n); };
   $('#subRows').onclick = e => { if (e.target.classList.contains('s-del')) e.target.closest('.subrow').remove(); };
   const closeEdit = () => $('#editBg').classList.remove('open');
   $('#eCancel').onclick = closeEdit;
@@ -1474,7 +1564,7 @@
 
   // ---- events ----
   $('#fab').onclick = () => openSheet(null, view === 'job' ? curJob : '');
-  $('#back').onclick = () => { view = view === 'evening' ? 'today' : view === 'job' ? 'projects' : 'more'; render(); window.scrollTo(0, 0); };
+  $('#back').onclick = () => { if (view === 'subs' && pickJob) { const n = pickJob; pickJob = ''; curJob = n; jobTab = 'info'; tabHist = ['chat']; view = 'job'; render(); window.scrollTo(0, 0); return; } view = view === 'evening' ? 'today' : view === 'job' ? 'projects' : 'more'; render(); window.scrollTo(0, 0); };
   $('#cancelBtn').onclick = closeSheet;
   $('#saveBtn').onclick = saveSheet;
   $('#bg').onclick = e => { if (e.target.id === 'bg') closeSheet(); };
@@ -1489,7 +1579,7 @@
 
   document.querySelector('nav').onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
-    view = b.dataset.view; filter = 'all'; render(); window.scrollTo(0, 0);
+    view = b.dataset.view; filter = 'all'; pickJob = ''; render(); window.scrollTo(0, 0);
   };
   $('#stats').onclick = e => {
     const b = e.target.closest('[data-filter]'); if (!b) return;
@@ -1497,6 +1587,7 @@
   };
 
   $('#main').onclick = e => {
+    const mc = e.target.closest('.mcall'); if (mc) { e.preventDefault(); callChoice(mc.dataset.name, mc.dataset.phone); return; }
     const rem = e.target.closest('[data-rem]');
     if (rem) { remTime = rem.dataset.rem; try { localStorage.setItem(REM_KEY, remTime); } catch {} return render(); }
     const go = e.target.closest('[data-go]');
@@ -1531,7 +1622,7 @@
       if (act === 'lfilter') { leadF = el.dataset.t; return render(); }
       if (act === 'lcall' || act === 'ltext' || act === 'lgo' || act === 'lsnz' || act === 'lstage' || act === 'ledit') {
         const l = leads.find(x => x.id === el.closest('.lcard').dataset.id); if (!l) return;
-        if (act === 'lcall') location.href = 'tel:' + cleanPhone(l.phone);
+        if (act === 'lcall') callChoice(l.name, l.phone);
         else if (act === 'ltext') location.href = smsHref(l.phone, `Hi ${l.name.split(' ')[0]}, it's ${OWNER || 'me'}. `);
         else if (act === 'lgo') window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(l.addr), '_blank');
         else if (act === 'lsnz') { l.next = addDays(3, l.next && l.next > todayISO() ? l.next : todayISO()); saveLeads(); render(); toast('Follow up ' + fmtDate(l.next)); }
@@ -1550,14 +1641,21 @@
       if (act === 'callall') return callPeople(curJob);
       if (act === 'addmember') return addMemberMenu(curJob);
       if (act === 'subrow') { if (e.target.closest('.mcall')) return; return subMenu(curJob, +el.dataset.i); }
-      if (act === 'addsub') { openEdit(curJob); addSubRow(); return; }
+      if (act === 'addsub') return openSubPicker(curJob);
       if (act === 'deljob') return deleteJobMenu(curJob);
       if (act === 'stagepick') return stageMenu(curJob);
       if (act === 'stagef') { stageF = el.dataset.s; return render(); }
       if (act === 'finrow') return openLoan(curJob, +el.dataset.i);
       if (act === 'finadd') return openLoan(curJob, -1);
       if (act === 'finedit') return openFin();
-      if (act === 'subdir') return subDirMenu(+el.dataset.i);
+      if (act === 'subtrade') { subTrade = el.dataset.t; return render(); }
+      if (act === 'subnew') return openContractor();
+      if (act === 'subimport') { const n = importSubsFromJobs(); toast(n ? `${n} contractors added` : 'No subs found in your jobs yet'); return render(); }
+      if (act === 'subfav') { const x = subsDir.find(y => y.id === el.closest('.ccard').dataset.id); if (x) { x.fav = !x.fav; saveSubsDir(); render(); } return; }
+      if (act === 'subcall') { const x = subsDir.find(y => y.id === el.closest('.ccard').dataset.id); if (x) callChoice(x.name, x.phone); return; }
+      if (act === 'subopen') return contractorMenu(el.dataset.id);
+      if (act === 'subpick') { const id = el.dataset.id; pickSel.has(id) ? pickSel.delete(id) : pickSel.add(id); const sc = window.scrollY; render(); window.scrollTo(0, sc); return; }
+      if (act === 'pickdone') return applyPick();
       if (act === 'member') { if (e.target.closest('.mcall')) return; return memberMenu(curJob, +el.dataset.i); }
       if (act === 'mtab') { mediaTab = el.dataset.t; return render(); }
       if (act === 'openlink') return void window.open(el.dataset.u, '_blank');
@@ -1658,9 +1756,10 @@
   if (location.hash === '#evening') view = 'evening';
   render();
   window.OAF = {
-    getState: () => ({ tasks, jobs, team, leads, reports, cfg }),
+    getState: () => ({ tasks, jobs, team, leads, reports, cfg, subsDir }),
     setState(st) {
-      tasks = st.tasks; jobs = st.jobs; team = st.team; leads = st.leads || leads; reports = st.reports || reports; cfg = st.cfg || cfg;
+      tasks = st.tasks; jobs = st.jobs; team = st.team; leads = st.leads || leads; reports = st.reports || reports; cfg = st.cfg || cfg; subsDir = st.subsDir || subsDir;
+      try { localStorage.setItem('oaf-subsdir-v1', JSON.stringify(subsDir)); } catch {}
       try { localStorage.setItem('oaf-leads-v1', JSON.stringify(leads)); localStorage.setItem('oaf-reports-v1', JSON.stringify(reports)); localStorage.setItem('oaf-cfg-v1', JSON.stringify(cfg)); } catch {}
       try { localStorage.setItem(KEY, JSON.stringify(tasks)); localStorage.setItem(JOBS_KEY, JSON.stringify(jobs)); localStorage.setItem(TEAM_KEY, JSON.stringify(team)); } catch {}
       render();
@@ -1668,6 +1767,7 @@
     onChange: null, blobOf,
     setName(n) { if (n) { OWNER = n; try { localStorage.setItem('oaf-name-v1', n); } catch {} render(); } },
   };
+  try { if (!subsDir.length && !localStorage.getItem('oaf-subs-imported')) { importSubsFromJobs(); localStorage.setItem('oaf-subs-imported', '1'); if (subsDir.length) render(); } } catch {}
   window.__oafV = APP_VERSION; window.__oafReady = true;
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     const hadController = !!navigator.serviceWorker.controller; let reloaded = false;

@@ -9,8 +9,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.svg">
 <title>My Tasks</title>
-<link rel="stylesheet" href="assets/base.css?v=30">
-<link rel="stylesheet" href="assets/theme.css?v=30">
+<link rel="stylesheet" href="assets/base.css?v=31">
+<link rel="stylesheet" href="assets/theme.css?v=31">
 </head>
 <body class="blueprint">
 <div class="app">
@@ -157,6 +157,7 @@
     <label>Subs on this job</label>
     <div id="subRows"></div>
     <button type="button" class="chip addsub" id="addSub">＋ Add another sub</button>
+    <button type="button" class="chip addsub" id="pickFromList">🧰 Pick from the contractor list</button>
     <label for="e-upsell">Upsell potential in $</label>
     <input id="e-upsell" inputmode="numeric" placeholder="e.g. 30000" autocomplete="off">
     <label>Visit or photo check every</label>
@@ -259,6 +260,21 @@
     <div id="impSummary"></div>
     <div class="cstat" id="impProg" hidden></div>
     <div class="actions"><button class="btn ghost" id="impCancel">Cancel</button><button class="btn primary" id="impGo" disabled>Import</button></div>
+  </div>
+</div>
+<div class="sheet-bg" id="cnBg">
+  <div class="sheet" role="dialog">
+    <div class="grab"></div>
+    <h2 id="cnTitle">Add contractor</h2>
+    <label for="cn-name">Name</label>
+    <input id="cn-name" placeholder="e.g. Carlos Ramirez" autocomplete="off">
+    <label>Trade</label>
+    <div class="chips" id="cn-trades"></div>
+    <input id="cn-trade" placeholder="or type another trade" autocomplete="off" style="margin-top:8px">
+    <div class="row2"><div><label for="cn-phone">Phone</label><input id="cn-phone" type="tel" inputmode="tel" placeholder="760 555 1234"></div>
+    <div><label for="cn-co">Company</label><input id="cn-co" placeholder="optional" autocomplete="off"></div></div>
+    <label for="cn-notes">Notes</label><textarea id="cn-notes" placeholder="Prices, availability, how good they are..."></textarea>
+    <div class="actions"><button class="btn danger" id="cnDel" hidden>Remove</button><button class="btn ghost" id="cnCancel">Cancel</button><button class="btn primary" id="cnSave">Save</button></div>
   </div>
 </div>
 <div class="sheet-bg" id="stBg">
@@ -369,7 +385,7 @@
 <script>
 // Safety net: shows a repair bar if the app fails to start or throws an error. Never deletes your saved tasks.
 (function () {
-  var EXPECT = '30', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
+  var EXPECT = '31', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
   function show(t) { try { msg.textContent = t; bar.hidden = false; } catch (e) {} }
   window.__oafNotify = show;
   window.addEventListener('error', function (e) { if (e.message && /ResizeObserver|Script error/.test(e.message)) return; show('Error: ' + (e.message || 'unknown') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
@@ -395,9 +411,9 @@
   }, 3500);
 })();
 </script>
-<script src="assets/config.js?v=30"></script>
+<script src="assets/config.js?v=31"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="assets/app.js?v=30"></script>
-<script src="assets/sync.js?v=30"></script>
+<script src="assets/app.js?v=31"></script>
+<script src="assets/sync.js?v=31"></script>
 </body>
 </html>
