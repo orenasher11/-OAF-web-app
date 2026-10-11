@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '38';
+  const APP_VERSION = '39';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -334,6 +334,19 @@
   }
   if (window.visualViewport) { visualViewport.addEventListener('resize', layoutComposer); visualViewport.addEventListener('scroll', layoutComposer); }
   function updateMain() { const has = $('#chatIn').value.trim() || pending.length; $('#chatSend').innerHTML = has ? SEND_SVG : MIC_SVG; $('#chatSend').classList.toggle('mic', !has); }
+  function nextStep(n) {
+    const mine = tasks.filter(t => t.project === n && !t.done);
+    const chk = mine.filter(t => t.ord !== undefined).sort((x, y) => x.ord - y.ord);
+    return chk[0] || mine.slice().sort((x, y) => (x.due || '9').localeCompare(y.due || '9'))[0] || null;
+  }
+  function paintTodoBar() {
+    const n = curJob, all = tasks.filter(t => t.project === n), gd = all.filter(t => t.ord !== undefined);
+    const nx = nextStep(n), open = all.filter(t => !t.done).length;
+    const lab = gd.length ? '🏈 Game Day · ' + gd.filter(t => t.done).length + '/' + gd.length : '📝 To-do · ' + open + ' open';
+    $('#todoL').textContent = lab;
+    $('#todoT').textContent = nx ? 'Next: ' + nx.title : all.length ? '🎉 All done' : 'Add the Game Day plan';
+    $('#todoDone').hidden = !nx;
+  }
   function paintChatHead() {
     const n = curJob, j = jobs[n] || {};
     $('#cName').textContent = j.addr || n;
@@ -341,7 +354,7 @@
     $('#cMembers').textContent = [...names, ...BOTS.map(b => '🤖 ' + b.name), 'You'].join(', ');
     { const g = getStages(j), i = stageIdx(j); $('#cStageTxt').textContent = !g.length ? 'Set the job stage' : g.length <= 2 ? g.join(' + ') : g[0] + ' + ' + (g.length - 1) + ' more'; $('#cStage').style.setProperty('--c', i >= 0 ? SCOL[i] : '#94a3b8');
       $('#cStageSeg').innerHTML = JSTAGES.map((st, k) => `<i class="${g.includes(st) ? 'on' : ''}" style="${g.includes(st) ? '--sc:' + SCOL[k] : ''}"></i>`).join(''); }
-    $('#cTaskN').textContent = tasks.filter(t => !t.done && t.project === n).length || '';
+    paintTodoBar();
     $('#apVia').lastChild.textContent = sendVia === 'wa' ? 'Sending via WhatsApp' : 'Sending via Messages';
   }
   function sendChat() {
@@ -1449,7 +1462,8 @@
   $('#cBack').onclick = () => { view = 'projects'; tabHist = []; render(); window.scrollTo(0, 0); };
   $('#cTitle').onclick = () => goTab('info');
   $('#cStage').onclick = () => stageMenu(curJob);
-  $('#cTasks').onclick = () => goTab('tasks');
+  $('#todoOpen').onclick = () => goTab('tasks');
+  $('#todoDone').onclick = () => { const t = nextStep(curJob); if (!t) return; t.done = true; t.doneOn = todayISO(); t.doneAt = new Date().toISOString(); save(); render(); toast('Done: ' + t.title, () => { t.done = false; t.doneOn = null; t.doneAt = null; save(); render(); }); };
   $('#cCall').onclick = () => callPeople(curJob);
   function doAction(a) {
     $('#apanel').hidden = true; layoutComposer();

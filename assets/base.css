@@ -473,3 +473,11 @@ body.inchat main{padding-top:calc(122px + env(safe-area-inset-top))}
 .task.nowrow{background:#f0fdf4;box-shadow:inset 4px 0 0 #16a34a}
 .tlink{margin-top:8px;border:0;border-radius:10px;background:#eef2f8;color:#0f2747;font-weight:700;font-size:13.5px;padding:8px 12px}
 .nextcard .ngo{margin-top:10px;width:100%;border:0;border-radius:14px;background:rgba(255,255,255,.16);color:#fff;font-weight:700;font-size:15px;padding:11px}
+
+.todorow{display:flex;gap:8px;padding:6px 10px 2px}
+.todoopen{flex:1;min-width:0;display:flex;align-items:center;gap:8px;border:0;border-radius:14px;background:var(--accent);color:#fff;padding:10px 12px;text-align:left;font:600 14px var(--font)}
+.todoopen .tdl{flex:none;background:rgba(255,255,255,.22);border-radius:10px;padding:2px 8px;font-size:12px;font-weight:800;white-space:nowrap}
+.todoopen b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
+.todoopen i{font-style:normal;font-size:20px;line-height:1}
+.tododone{flex:none;width:44px;border:0;border-radius:14px;background:#14a05a;color:#fff;font-size:20px;font-weight:800}
+.tododone[hidden]{display:none}
