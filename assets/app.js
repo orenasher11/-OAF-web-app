@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '33';
+  const APP_VERSION = '34';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -886,7 +886,7 @@
   const screenSubs = screenContractors;
 
   // ---- WhatsApp-style group info screens ----
-  let tabHist = [], mediaTab = 'media', chatSearch = false, pendingJump = null;
+  let todayScope = 'now'; let tabHist = [], mediaTab = 'media', chatSearch = false, pendingJump = null;
   const waNum = p => { const d = String(p || '').replace(/\D/g, ''); return d.length === 10 ? '1' + d : d; };
   function goTab(t) { if (t !== jobTab) tabHist.push(jobTab); jobTab = t; chatSearch = false; render(); window.scrollTo(0, 0); }
   function backTab() { jobTab = tabHist.pop() || 'chat'; chatSearch = false; render(); if (jobTab !== 'chat') window.scrollTo(0, 0); }
@@ -1091,6 +1091,23 @@
             <div class="hint">Sample jobs are made-up examples. You can remove them anytime from the Projects tab.</div></div>`
         : `<div class="empty"><div class="big">✓</div>${filter === 'all' ? 'Nothing due. Tap + to add a task.' : 'Nothing here.'}</div>`;
       if (filter === 'all') { const k = html.startsWith('<button class="alert"') ? html.indexOf('</button>') + 9 : 0; html = html.slice(0, k) + evlink + html.slice(k); }
+      // scope switch: due now / next 7 days / every open task
+      const week = open.filter(t => t.due && t.due > t0 && t.due <= addDays(7)), welcome = html.includes('class="welcome"');
+      if (todayScope === 'week') {
+        stats = ''; $('#sub').textContent = week.length ? `${week.length} ${week.length === 1 ? 'task' : 'tasks'} in the next 7 days` : 'Nothing coming up this week';
+        html = ''; let last = null; week.forEach(t => { if (t.due !== last) { html += `<div class="section-title">${fmtDate(t.due)}</div>`; last = t.due; } html += taskHTML(t); });
+        if (!week.length) html = `<div class="empty"><div class="big">📅</div>No tasks due in the next 7 days.</div>`;
+      } else if (todayScope === 'all') {
+        stats = ''; $('#sub').textContent = `${open.length} open ${open.length === 1 ? 'task' : 'tasks'} across ${new Set(open.map(t => t.project || '')).size} ${new Set(open.map(t => t.project || '')).size === 1 ? 'job' : 'jobs'}`;
+        html = ''; const by = {}; open.forEach(t => (by[t.project || ''] ||= []).push(t));
+        Object.keys(by).sort((a, b) => (a ? (jobs[a] || {}).addr || a : '~').localeCompare(b ? (jobs[b] || {}).addr || b : '~')).forEach(k => {
+          html += `<div class="section-title">${k ? esc((jobs[k] || {}).addr || k) : 'Not tied to a job'}${k && (jobs[k] || {}).addr ? ` <span class="sname">· ${esc(k)}</span>` : ''}</div>` + by[k].map(taskHTML).join('');
+        });
+        if (!open.length) html = `<div class="empty"><div class="big">✓</div>No open tasks. Tap + to add one.</div>`;
+      } else if (!welcome && !need && filter === 'all' && !html.includes('class="task')) {
+        html = html.replace(/<div class="empty">[\s\S]*?<\/div>/, `<div class="empty"><div class="big">✓</div>Nothing due today.${open.length ? ` You have <b>${open.length}</b> open ${open.length === 1 ? 'task' : 'tasks'}: tap <b>All open</b> above to see them.` : ' Tap + to add a task.'}</div>`);
+      }
+      if (!welcome) html = `<div class="seg scope"><button class="${todayScope === 'now' ? 'on' : ''}" data-act="tscope" data-t="now">Due now ${need || ''}</button><button class="${todayScope === 'week' ? 'on' : ''}" data-act="tscope" data-t="week">Next 7 days ${week.length || ''}</button><button class="${todayScope === 'all' ? 'on' : ''}" data-act="tscope" data-t="all">All open ${open.length || ''}</button></div>` + html;
     } else if (view === 'visits') {
       $('#h1').textContent = 'Site Visits';
       const list = visitList();
@@ -1663,6 +1680,7 @@
       if (act === 'addto') return openSheet(null, el.dataset.p);
       if (act === 'openjob') { curJob = el.dataset.p; jobTab = 'chat'; tabHist = []; chatSearch = false; chatLimit = 300; view = 'job'; render(); return; }
       if (act === 'go') { view = el.dataset.v; filter = 'all'; render(); window.scrollTo(0, 0); return; }
+      if (act === 'tscope') { todayScope = el.dataset.t; filter = 'all'; return render(); }
       if (act === 'oldjob') return openJob('old');
       if (act === 'showdone') { showDoneJobs = !showDoneJobs; return render(); }
       if (act === 'archive') { const j = jobs[curJob] = jobs[curJob] || {}; j.archived = !j.archived; saveJobs(); view = 'projects'; render(); window.scrollTo(0, 0); return toast(j.archived ? 'Job marked complete' : 'Job reopened'); }
