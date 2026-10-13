@@ -496,3 +496,4 @@ body.inchat main{padding-top:calc(122px + env(safe-area-inset-top))}
 .pbtns button{flex:1;border:0;border-radius:10px;background:var(--accent,#ff6a1a);color:#fff;font:700 13px var(--font);padding:8px 6px}
 .leaflet-popup-content{font-family:var(--font);margin:12px 14px}
 .drv{font-weight:700;color:var(--text)}.popdrv{margin-top:6px;font-size:13px}.popdrv small{color:var(--muted)}
+.mapbar button.on{background:var(--accent);color:#fff}.pin.sel{border-color:#ff6a1a;transform:scale(1.25);display:grid;place-items:center}.pin.sel b{color:#fff;font:800 11px var(--font)}.pin.lead.sel{transform:rotate(45deg) scale(1.25)}.pin.lead.sel b{transform:rotate(-45deg)}
