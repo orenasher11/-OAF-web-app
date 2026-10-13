@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '50';
+  const APP_VERSION = '51';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -1141,10 +1141,10 @@
     } catch {}
     geoBusy = false; mapStatus();
   }
-  let holdAt = 0, pulseKey = null; const HOLD_MS = 1000;
+  let holdAt = 0, pulseKey = null; const HOLD_MS = 650;
   function buzz() {
     try { if (navigator.vibrate) navigator.vibrate(40); } catch {}
-    try { const h = document.getElementById('hapt'); if (h) h.click(); } catch {}
+    try { const h = document.getElementById('hapt'); if (h) { const i = h.querySelector('input'); h.click(); if (i) i.checked = !i.checked; } } catch {}
   }
   function drawPins() {
     if (!lmap || !pinLayer) return; pinLayer.clearLayers();
@@ -1239,7 +1239,7 @@
     const day = dayList(), h = getHome();
     const near = nearOn && myPos ? mapItems().filter(mapPlaced).map(i => ({ i, mi: milesBetween(myPos, i.rec) })).sort((x, y) => x.mi - y.mi).slice(0, 10) : [];
     return `<div class="mapbar"><button data-act="mapfit">🗺️ All SoCal</button><button data-act="maplocate">📍 Near me</button><button data-act="maphome">🏠 Home: ${esc(h.name)}</button></div>
-      <div id="jmap" class="jmap"></div><div class="mapnote" id="mapStatus"></div><div class="mapnote">💡 Hold a pin for 1 second, then tap other pins to see how long it takes to get there.</div><div id="cmpBox"></div>
+      <div id="jmap" class="jmap"></div><div class="mapnote" id="mapStatus"></div><div class="mapnote">💡 Hold a pin for a moment, then tap other pins to see how long it takes to get there.</div><div id="cmpBox"></div>
       <div class="mapkey"><span><i style="background:#f59e0b"></i>Lead</span><span><i style="background:#2563eb"></i>Job</span><span><i style="background:#16a34a"></i>Late stage</span><span>Dashed circle = 300 mi from home</span></div>
       ${near.length ? `<div class="ssec">Closest to you</div><div class="scard">${near.map(x => `<button class="srow" data-act="mapopen" data-k="${esc(x.i.k)}"><span class="sico">${x.i.kind === 'job' ? '💼' : '☎️'}</span><span class="slbl"><b>${esc(x.i.title)}</b><small>${esc(x.i.kind === 'job' ? x.i.sub : x.i.addr)}</small></span><span class="sval">${Math.round(x.mi)} mi</span><span class="schev">›</span></button>`).join('')}</div>` : ''}
       <div class="ssec">My day${day.length ? ' · ' + day.length + ' stops' : ''}<span id="dayTot"></span></div>
