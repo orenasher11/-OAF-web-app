@@ -188,9 +188,9 @@
     else if (ui === 'loading') h = `<p class="help">Checking your sign-in…</p>`;
     else if (ui === 'out' || ui === 'noaccess') h = `${ui === 'noaccess' ? `<div class="cerr">${esc(err || 'This email has not been invited yet.')} Ask the owner to invite you, then try again.</div>` : ''}
       <label for="c-email">Your email</label><input id="c-email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" value="${esc(email)}">
-      <div class="actions"><button class="btn primary" id="c-send">Email me a code</button></div>${ui === 'noaccess' ? '' : e}`;
-    else if (ui === 'code') h = `<p class="help">We sent a 6-digit code to <b>${esc(email)}</b>. It can take a minute. Check spam too.</p>
-      <label for="c-code">6-digit code</label><input id="c-code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="123456">
+      <div class="actions"><button class="btn primary" id="c-send">Email me a sign-in link</button></div>${ui === 'noaccess' ? '' : e}`;
+    else if (ui === 'code') h = `<p class="help">We emailed <b>${esc(email)}</b>. It can take a minute. Check spam too.<br><br><b>Don't tap the link.</b> Touch and hold the sign-in link in the email, tap <b>Copy Link</b>, come back here and paste it below.</p>
+      <label for="c-code">Paste the link here</label><input id="c-code" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://…supabase.co/auth/v1/verify?…">
       <div class="actions"><button class="btn ghost" id="c-back">Different email</button><button class="btn primary" id="c-verify">Sign in</button></div>${e}`;
     else if (ui === 'name') h = `<p class="help">Last step. Your name shows next to your messages.</p>
       <label for="c-name">Your name</label><input id="c-name" autocomplete="name" placeholder="e.g. Oren">
@@ -221,9 +221,17 @@
     });
     else if (id === 'c-back') { ui = 'out'; err = ''; paint(); }
     else if (id === 'c-verify') guard(async () => {
-      const token = ($('#c-code').value || '').replace(/\s/g, '');
-      const { data, error } = await sb.auth.verifyOtp({ email, token, type: 'email' });
-      if (error) throw error; await afterLogin(data.user);
+      const raw = ($('#c-code').value || '').trim();
+      let res;
+      if (/^\d{6,8}$/.test(raw)) res = await sb.auth.verifyOtp({ email, token: raw, type: 'email' });
+      else {
+        let u; try { u = new URL(raw.replace(/\s/g, '')); } catch { throw new Error('Paste the whole link from the email.'); }
+        const th = u.searchParams.get('token') || u.searchParams.get('token_hash'); let ty = u.searchParams.get('type') || 'magiclink';
+        if (!th) throw new Error('That link is missing its sign-in part. Copy the link again from the email.');
+        res = await sb.auth.verifyOtp({ token_hash: th, type: ty });
+      }
+      if (res.error) throw new Error(/expired|invalid/i.test(res.error.message) ? 'That link was already used or has expired. Go back and ask for a new one. Copy it without tapping it.' : res.error.message);
+      await afterLogin(res.data.user);
     });
     else if (id === 'c-savename') guard(async () => {
       const name = ($('#c-name').value || '').trim(); if (!name) { err = 'Enter your name.'; return paint(); }

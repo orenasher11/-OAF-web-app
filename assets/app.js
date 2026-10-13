@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '40';
+  const APP_VERSION = '41';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
