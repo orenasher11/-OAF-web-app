@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '49';
+  const APP_VERSION = '50';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -1141,7 +1141,11 @@
     } catch {}
     geoBusy = false; mapStatus();
   }
-  let holdAt = 0; const HOLD_MS = 1000;
+  let holdAt = 0, pulseKey = null; const HOLD_MS = 1000;
+  function buzz() {
+    try { if (navigator.vibrate) navigator.vibrate(40); } catch {}
+    try { const h = document.getElementById('hapt'); if (h) h.click(); } catch {}
+  }
   function drawPins() {
     if (!lmap || !pinLayer) return; pinLayer.clearLayers();
     const items = mapItems().filter(mapPlaced), anchored = cmpSel.length > 0, mk = {};
@@ -1149,11 +1153,12 @@
       const sel = cmpSel.indexOf(it.k), icon = L.divIcon({ className: 'pinwrap', html: `<span class="pin ${it.kind}${sel >= 0 ? ' sel' : ''}" style="background:${it.color}">${sel >= 0 ? '<b>' + (sel === 0 ? 'A' : sel) + '</b>' : ''}</span>`, iconSize: [22, 22], iconAnchor: [11, 11] });
       const m = L.marker([it.rec.lat, it.rec.lng], { icon, keyboard: false }).addTo(pinLayer); mk[it.k] = m;
       const el = m.getElement();
+      if (el && pulseKey === it.k) el.classList.add('pulse');
       if (el) {
         let t = null, x0 = 0, y0 = 0;
         const stop = () => { clearTimeout(t); t = null; };
         el.addEventListener('contextmenu', ev => ev.preventDefault());
-        el.addEventListener('pointerdown', ev => { x0 = ev.clientX; y0 = ev.clientY; stop(); t = setTimeout(() => { t = null; holdAt = Date.now(); if (navigator.vibrate) try { navigator.vibrate(30); } catch {} cmpSel = [it.k]; toast('Starting point: ' + it.title + '. Now tap other pins.'); drawPins(); }, HOLD_MS); });
+        el.addEventListener('pointerdown', ev => { x0 = ev.clientX; y0 = ev.clientY; stop(); t = setTimeout(() => { t = null; holdAt = Date.now(); buzz(); pulseKey = it.k; setTimeout(() => { pulseKey = null; }, 800); cmpSel = [it.k]; toast('Starting point: ' + it.title + '. Now tap other pins.'); drawPins(); }, HOLD_MS); });
         el.addEventListener('pointermove', ev => { if (t && Math.hypot(ev.clientX - x0, ev.clientY - y0) > 10) stop(); });
         ['pointerup', 'pointercancel', 'pointerleave'].forEach(n => el.addEventListener(n, stop));
       }
@@ -1182,7 +1187,9 @@
     lmap = L.map(box, { zoomControl: true, attributionControl: true });
     if (mapView) lmap.setView(mapView.c, mapView.z, { animate: false }); else lmap.fitBounds(SOCAL);
     lmap.on('moveend', () => { if (lmap) mapView = { c: lmap.getCenter(), z: lmap.getZoom() }; });
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(lmap);
+    let base = null;
+    if (window.maplibregl && L.maplibreGL) { try { base = L.maplibreGL({ style: 'https://tiles.openfreemap.org/styles/bright', attribution: '© OpenFreeMap © OpenMapTiles · Data © OpenStreetMap' }).addTo(lmap); } catch { base = null; } }
+    if (!base) L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, detectRetina: true, attribution: '© OpenStreetMap contributors' }).addTo(lmap);
     const h = getHome(); L.circle([h.lat, h.lng], { radius: 300 * 1609.34, color: '#0f2747', weight: 1.5, dashArray: '6 6', fillOpacity: 0.03, interactive: false }).addTo(lmap);
     L.marker([h.lat, h.lng], { icon: L.divIcon({ className: 'pinwrap', html: '<span class="pin home">🏠</span>', iconSize: [26, 26], iconAnchor: [13, 13] }), interactive: false }).addTo(lmap);
     pinLayer = L.layerGroup().addTo(lmap); fillDrive();
