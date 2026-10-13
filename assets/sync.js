@@ -114,7 +114,7 @@
         if (meta.up[a.id]) continue;
         const blob = await A.blobOf(a.id, true); if (!blob) continue;
         const { error } = await sb.storage.from('media').upload(ws + '/' + a.id, blob, { contentType: a.mime || blob.type || 'application/octet-stream', upsert: true });
-        if (!error) { meta.up[a.id] = 1; saveMeta(); } else { err = 'Some files could not upload yet.'; }
+        if (!error) { meta.up[a.id] = 1; saveMeta(); } else { err = 'Some files could not upload yet: ' + (error.message || error.error || 'unknown') + (blob.size ? ' (' + Math.round(blob.size / 1048576 * 10) / 10 + ' MB)' : ''); }
       }
     }
   }
@@ -188,9 +188,9 @@
     else if (ui === 'loading') h = `<p class="help">Checking your sign-in…</p>`;
     else if (ui === 'out' || ui === 'noaccess') h = `${ui === 'noaccess' ? `<div class="cerr">${esc(err || 'This email has not been invited yet.')} Ask the owner to invite you, then try again.</div>` : ''}
       <label for="c-email">Your email</label><input id="c-email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" value="${esc(email)}">
-      <div class="actions"><button class="btn primary" id="c-send">Email me a sign-in link</button></div>${ui === 'noaccess' ? '' : e}`;
-    else if (ui === 'code') h = `<p class="help">We emailed <b>${esc(email)}</b>. It can take a minute. Check spam too.<br><br><b>Don't tap the link.</b> Touch and hold the sign-in link in the email, tap <b>Copy Link</b>, come back here and paste it below.</p>
-      <label for="c-code">Paste the link here</label><input id="c-code" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://…supabase.co/auth/v1/verify?…">
+      <div class="actions"><button class="btn primary" id="c-send">Email me a code</button></div>${ui === 'noaccess' ? '' : e}`;
+    else if (ui === 'code') h = `<p class="help">We emailed <b>${esc(email)}</b>. It can take a minute. Check spam too.<br><br>Type the 6-digit code from the email below.</p>
+      <label for="c-code">6-digit code</label><input id="c-code" inputmode="numeric" autocomplete="one-time-code" autocapitalize="off" spellcheck="false" placeholder="123456">
       <div class="actions"><button class="btn ghost" id="c-back">Different email</button><button class="btn primary" id="c-verify">Sign in</button></div>${e}`;
     else if (ui === 'name') h = `<p class="help">Last step. Your name shows next to your messages.</p>
       <label for="c-name">Your name</label><input id="c-name" autocomplete="name" placeholder="e.g. Oren">
