@@ -1,3 +1,1 @@
-// Cloud settings. These two values are public by design (safe to keep in the page).
-// Fill them in after creating your Supabase project (see setup.html).
-window.OAF_CFG = { url: '', anon: '' };
+window.OAF_CFG = { url: 'https://dbldrflibvhaogtyaubh.supabase.co', anon: 'sb_publishable_mwV_ily5iqTJ3z3mFsueBA_c8bOblaX' };
