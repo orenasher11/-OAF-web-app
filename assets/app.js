@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '44';
+  const APP_VERSION = '45';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -1107,6 +1107,89 @@
     ]);
   }
 
+
+  // ---- map of jobs and leads (Leaflet + OpenStreetMap data) ----
+  const SOCAL = [[32.3, -120.7], [35.7, -114.2]], HOME_KEY = 'oaf-home-v1', DAY_KEY = 'oaf-day-v1';
+  let lmap = null, pinLayer = null, geoBusy = false, myPos = null, nearOn = false, dayStops = [];
+  try { dayStops = JSON.parse(localStorage.getItem(DAY_KEY)) || []; } catch {}
+  const saveDay = () => { try { localStorage.setItem(DAY_KEY, JSON.stringify(dayStops)); } catch {} };
+  const getHome = () => { try { return JSON.parse(localStorage.getItem(HOME_KEY)) || { lat: 34.0522, lng: -118.2437, name: 'Los Angeles' }; } catch { return { lat: 34.0522, lng: -118.2437, name: 'Los Angeles' }; } };
+  const appleMaps = addr => 'https://maps.apple.com/?dirflg=d&daddr=' + encodeURIComponent(addr);
+  const milesBetween = (a, b) => { const R = 3958.8, r = x => x * Math.PI / 180, dLa = r(b.lat - a.lat), dLo = r(b.lng - a.lng), h = Math.sin(dLa / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLo / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
+  function mapItems() {
+    const out = [];
+    Object.keys(jobs).filter(n => jobs[n] && !jobs[n].archived && !jobs[n].demo && jobs[n].addr).forEach(n => { const j = jobs[n], i = stageIdx(j); out.push({ k: 'job:' + n, kind: 'job', key: n, title: j.addr, sub: n, addr: j.addr, rec: j, save: saveJobs, color: i >= 0 ? SCOL[i] : '#94a3b8' }); });
+    leads.filter(l => isOpenLead(l) && l.addr).forEach(l => out.push({ k: 'lead:' + l.id, kind: 'lead', key: l.id, title: l.name || l.addr, sub: l.addr, addr: l.addr, rec: l, save: saveLeads, color: '#f59e0b' }));
+    return out;
+  }
+  const mapPlaced = it => it.rec.lat != null && it.rec.geoAddr === it.addr;
+  function mapStatus() {
+    const el = document.getElementById('mapStatus'); if (!el) return;
+    const all = mapItems(), placed = all.filter(mapPlaced).length, fail = all.filter(i => !mapPlaced(i) && i.rec.geoFail === i.addr).length;
+    el.textContent = !all.length ? 'No addresses yet. Add an address to a job or lead and it appears here.' : placed + ' of ' + all.length + ' placed' + (geoBusy ? ' · finding the rest…' : '') + (fail ? ' · ' + fail + " couldn't be found (check the address)" : '');
+  }
+  async function geocodeMissing() {
+    if (geoBusy) return; geoBusy = true; mapStatus();
+    try {
+      for (const it of mapItems().filter(i => !mapPlaced(i) && i.rec.geoFail !== i.addr)) {
+        if (view !== 'map') break;
+        let d = []; try { const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&viewbox=-121,36,-113,32&q=' + encodeURIComponent(it.addr)); d = await r.json(); } catch { break; }
+        if (d && d[0]) { it.rec.lat = +d[0].lat; it.rec.lng = +d[0].lon; it.rec.geoAddr = it.addr; delete it.rec.geoFail; } else it.rec.geoFail = it.addr;
+        it.save(); drawPins(); mapStatus();
+        await new Promise(r => setTimeout(r, 1100));
+      }
+    } catch {}
+    geoBusy = false; mapStatus();
+  }
+  function drawPins() {
+    if (!lmap || !pinLayer) return; pinLayer.clearLayers();
+    mapItems().filter(mapPlaced).forEach(it => {
+      const icon = L.divIcon({ className: 'pinwrap', html: `<span class="pin ${it.kind}" style="background:${it.color}"></span>`, iconSize: [22, 22], iconAnchor: [11, 11] });
+      const dist = myPos ? ' · ' + Math.round(milesBetween(myPos, it.rec)) + ' mi away' : '';
+      L.marker([it.rec.lat, it.rec.lng], { icon }).addTo(pinLayer).bindPopup(`<b>${esc(it.title)}</b><br><small>${esc(it.kind === 'job' ? it.sub : it.addr)}${dist}</small><div class="pbtns"><button data-act="mapnav" data-a="${esc(it.addr)}">🧭 Go</button><button data-act="mapday" data-k="${esc(it.k)}">＋ Day</button><button data-act="mapopen" data-k="${esc(it.k)}">Open</button></div>`);
+    });
+  }
+  function initMap() {
+    const box = document.getElementById('jmap'); if (!box) return;
+    if (lmap) { try { lmap.remove(); } catch {} lmap = null; }
+    if (!window.L) { box.innerHTML = '<div class="empty small"><div class="big">🗺️</div>The map needs an internet connection to load.</div>'; return; }
+    lmap = L.map(box, { zoomControl: true, attributionControl: true }).fitBounds(SOCAL);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(lmap);
+    const h = getHome(); L.circle([h.lat, h.lng], { radius: 300 * 1609.34, color: '#0f2747', weight: 1.5, dashArray: '6 6', fillOpacity: 0.03, interactive: false }).addTo(lmap);
+    L.marker([h.lat, h.lng], { icon: L.divIcon({ className: 'pinwrap', html: '<span class="pin home">🏠</span>', iconSize: [26, 26], iconAnchor: [13, 13] }), interactive: false }).addTo(lmap);
+    pinLayer = L.layerGroup().addTo(lmap);
+    lmap.on('popupopen', ev => { ev.popup.getElement().querySelectorAll('[data-act]').forEach(b => { b.onclick = () => { mapAct(b.dataset.act, b); }; }); });
+    drawPins(); mapStatus(); geocodeMissing();
+    setTimeout(() => lmap && lmap.invalidateSize(), 150);
+  }
+  function destroyMap() { if (lmap) { try { lmap.remove(); } catch {} lmap = null; } }
+  function dayList() {
+    const all = mapItems(), items = dayStops.map(k => all.find(i => i.k === k)).filter(i => i && mapPlaced(i));
+    let cur = myPos || getHome(), left = items.slice(), out = [];
+    while (left.length) { left.sort((x, y) => milesBetween(cur, x.rec) - milesBetween(cur, y.rec)); const n = left.shift(); out.push({ it: n, mi: milesBetween(cur, n.rec) }); cur = n.rec; }
+    return out;
+  }
+  function mapAct(act, el) {
+      if (act === 'mapnav') return window.open(appleMaps(el.dataset.a), '_blank');
+      if (act === 'mapfit') { if (lmap) lmap.fitBounds(SOCAL); return; }
+      if (act === 'mapopen') { const [kd, ...r] = el.dataset.k.split(':'), id = r.join(':'); if (kd === 'job') { curJob = id; jobTab = 'chat'; tabHist = []; chatSearch = false; chatLimit = 300; view = 'job'; render(); } else { view = 'leads'; render(); } return; }
+      if (act === 'mapday') { if (!dayStops.includes(el.dataset.k)) { dayStops.push(el.dataset.k); saveDay(); } toast('Added to My day'); const keep = lmap && { c: lmap.getCenter(), z: lmap.getZoom() }; render(); if (keep && lmap) lmap.setView(keep.c, keep.z, { animate: false }); return; }
+      if (act === 'mapundo') { dayStops = dayStops.filter(k => k !== el.dataset.k); saveDay(); return render(); }
+      if (act === 'mapclear') { dayStops = []; saveDay(); return render(); }
+      if (act === 'maplocate') { if (!navigator.geolocation) return toast('Location is not available'); navigator.geolocation.getCurrentPosition(p => { myPos = { lat: p.coords.latitude, lng: p.coords.longitude }; nearOn = true; render(); if (lmap) lmap.setView([myPos.lat, myPos.lng], 9); }, () => toast('Allow location for this site in Settings to use Near me'), { enableHighAccuracy: false, timeout: 10000 }); return; }
+      if (act === 'maphome') return openPick('Set your home base', [{ label: '📍 Use my current location', fn: () => { if (!navigator.geolocation) return toast('Location is not available'); navigator.geolocation.getCurrentPosition(p => { try { localStorage.setItem(HOME_KEY, JSON.stringify({ lat: p.coords.latitude, lng: p.coords.longitude, name: 'My location' })); } catch {} render(); }, () => toast('Allow location for this site in Settings')); } }, { label: '🏙️ Los Angeles', fn: () => { try { localStorage.setItem(HOME_KEY, JSON.stringify({ lat: 34.0522, lng: -118.2437, name: 'Los Angeles' })); } catch {} render(); } }, { label: '🌴 Palm Springs', fn: () => { try { localStorage.setItem(HOME_KEY, JSON.stringify({ lat: 33.8303, lng: -116.5453, name: 'Palm Springs' })); } catch {} render(); } }, { label: '⛱️ San Diego', fn: () => { try { localStorage.setItem(HOME_KEY, JSON.stringify({ lat: 32.7157, lng: -117.1611, name: 'San Diego' })); } catch {} render(); } }]);
+  }
+  function mapHTML() {
+    const day = dayList(), tot = day.reduce((s, x) => s + x.mi, 0), h = getHome();
+    const near = nearOn && myPos ? mapItems().filter(mapPlaced).map(i => ({ i, mi: milesBetween(myPos, i.rec) })).sort((x, y) => x.mi - y.mi).slice(0, 10) : [];
+    return `<div class="mapbar"><button data-act="mapfit">🗺️ All SoCal</button><button data-act="maplocate">📍 Near me</button><button data-act="maphome">🏠 Home: ${esc(h.name)}</button></div>
+      <div id="jmap" class="jmap"></div><div class="mapnote" id="mapStatus"></div>
+      <div class="mapkey"><span><i style="background:#f59e0b"></i>Lead</span><span><i style="background:#2563eb"></i>Job</span><span><i style="background:#16a34a"></i>Late stage</span><span>Dashed circle = 300 mi from home</span></div>
+      ${near.length ? `<div class="ssec">Closest to you</div><div class="scard">${near.map(x => `<button class="srow" data-act="mapopen" data-k="${esc(x.i.k)}"><span class="sico">${x.i.kind === 'job' ? '💼' : '☎️'}</span><span class="slbl"><b>${esc(x.i.title)}</b><small>${esc(x.i.kind === 'job' ? x.i.sub : x.i.addr)}</small></span><span class="sval">${Math.round(x.mi)} mi</span><span class="schev">›</span></button>`).join('')}</div>` : ''}
+      <div class="ssec">My day${day.length ? ' · ' + day.length + ' stops · about ' + Math.round(tot) + ' mi in a straight line' : ''}</div>
+      ${day.length ? `<div class="scard">${day.map((x, n) => `<div class="srow"><span class="sico">${n + 1}</span><span class="slbl"><b>${esc(x.it.title)}</b><small>${Math.round(x.mi)} mi from ${n ? 'previous stop' : myPos ? 'you' : 'home'}</small></span><button class="spill" data-act="mapnav" data-a="${esc(x.it.addr)}">🧭 Go</button><button class="cx" data-act="mapundo" data-k="${esc(x.it.k)}" aria-label="Remove">×</button></div>`).join('')}</div><button class="jbtn wide" data-act="mapclear">Clear my day</button>` : '<div class="hint">Tap a pin and choose <b>＋ Day</b>. The app orders your stops from nearest to farthest.</div>'}`;
+  }
+
   function render() {
     const t0 = todayISO();
     const open = tasks.filter(t => !t.done).sort(cmp);
@@ -1195,7 +1278,7 @@
       $('#h1').textContent = 'More'; $('#sub').textContent = 'Tools and settings';
       html += `<div class="scard">
         ${srow('🚗', 'Site visits', lateV ? `<b class="red">${lateV} overdue</b>` : '', 'go', 'data-v="visits"')}
-        ${srow('📅', 'Calendar &amp; routes', '', 'go', 'data-v="calendar"')}
+        ${srow('🗺️', 'Job map &amp; routes', '', 'go', 'data-v="map"')}
         ${srow('🗓️', 'Upcoming tasks', '', 'go', 'data-v="upcoming"')}
         ${srow('☎️', 'Leads pipeline', leadsDue().length ? `<b class="red">${leadsDue().length} to follow up</b>` : '', 'go', 'data-v="leads"')}
         ${srow('🏦', 'Finance companies', '', 'finedit')}
@@ -1212,6 +1295,9 @@
         <button id="clearDone">🧹 Clear completed</button>
         <input type="file" id="importFile" accept="application/json" hidden></div>
         <div class="hint">Your data is stored on this phone${window.OAFsync && window.OAFsync.label() === 'Synced' ? ' and in the cloud' : ' only. Back up now and then'}. Photos, videos and files are not in the backup yet.<br>Version ${APP_VERSION}</div>`;
+    } else if (view === 'map') {
+      $('#h1').textContent = 'Job map'; $('#sub').textContent = 'Every job and lead in Southern California';
+      html += mapHTML();
     } else if (view === 'upcoming') {
       $('#h1').textContent = 'Upcoming';
       $('#sub').textContent = 'What is coming up next';
@@ -1291,7 +1377,7 @@
       html = `<button class="jbtn wide oldbtn" data-act="oldjob">📥 Add a job that's already in progress</button>` + html;
     }
     $('#stats').innerHTML = stats; $('#stats').hidden = !stats;
-    const SUBS = ['visits', 'calendar', 'upcoming', 'reports', 'leads'];
+    const SUBS = ['visits', 'calendar', 'map', 'upcoming', 'reports', 'leads'];
     $('#jobbar').hidden = !['today', 'projects'].includes(view);
     $('#back').hidden = !(view === 'job' || view === 'evening' || SUBS.includes(view) || (view === 'subs' && pickJob));
     $('#back').textContent = view === 'evening' ? '‹ Today' : view === 'job' ? '‹ Jobs' : view === 'subs' && pickJob ? '‹ Job' : '‹ More';
@@ -1301,7 +1387,7 @@
     const inPlay = [...new Set(open.map(t => t.project).filter(Boolean))].reduce((a, n) => a + (jobs[n]?.upsell || 0), 0);
     $('#pot').innerHTML = inPlay ? `Upsell potential in play <b>${money(inPlay)}</b>` : 'Add upsell potential to each job';
     $('#main').innerHTML = html;
-    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === ({ job: 'projects', visits: 'more', calendar: 'more', upcoming: 'more', reports: 'more', leads: 'more', subs: 'subs', evening: 'today' }[view] || view)));
+    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === ({ job: 'projects', visits: 'more', calendar: 'more', map: 'more', upcoming: 'more', reports: 'more', leads: 'more', subs: 'subs', evening: 'today' }[view] || view)));
     const inChat = view === 'job' && jobTab === 'chat';
     $('#composer').hidden = !inChat; $('#chatHead').hidden = !inChat; $('#fab').hidden = view === 'job';
     document.body.classList.toggle('injob', view === 'job');
@@ -1315,6 +1401,7 @@
       pendingJump = null;
     }); }
     hydrateMedia(); if (view === 'subs') applySubFilter();
+    if (view === 'map') initMap(); else destroyMap();
     $('#projList').innerHTML = [...new Set(tasks.map(t => t.project).filter(Boolean))].map(p => `<option value="${esc(p)}">`).join('');
   }
 
@@ -1729,7 +1816,7 @@
         const send = x => location.href = smsHref(x && x.phone, `Hi${x && x.name ? ' ' + x.name : ''}, it's ${OWNER || 'me'}. Can you send me photos or a quick video of the current work at ${n}${j.addr ? ' (' + j.addr + ')' : ''}? Please include anything about to get covered up. Thanks!`);
         if (subs.length <= 1) send(subs[0]);
         else openPick('Who do you want to text?', subs.map(x => ({ label: '💬 ' + subLabel(x), fn: () => send(x) })));
-      } else if (act === 'navto') window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(j.addr), '_blank');
+      } else if (act === 'navto') window.open(appleMaps(j.addr), '_blank');
       else if (act === 'editjob') openEdit(n);
       return;
     }
@@ -1737,6 +1824,7 @@
       const act = el.dataset.act;
       if (act === 'collapse') { const p = el.dataset.p; collapsed.has(p) ? collapsed.delete(p) : collapsed.add(p); return render(); }
       if (act === 'addto') return openSheet(null, el.dataset.p);
+      if (act.startsWith('map')) return void mapAct(act, el);
       if (act === 'openjob') { curJob = el.dataset.p; jobTab = 'chat'; tabHist = []; chatSearch = false; chatLimit = 300; view = 'job'; render(); return; }
       if (act === 'go') { view = el.dataset.v; filter = 'all'; render(); window.scrollTo(0, 0); return; }
       if (act === 'addkick') return openPick('Add the kickoff checklist', [{ label: 'Start today', fn: () => addKickoff(curJob, 0) }, { label: 'Start tomorrow at 8:00 AM', fn: () => addKickoff(curJob, 1) }, { label: 'Start in 2 days', fn: () => addKickoff(curJob, 2) }]);
@@ -1758,7 +1846,7 @@
         const l = leads.find(x => x.id === el.closest('.lcard').dataset.id); if (!l) return;
         if (act === 'lcall') callChoice(l.name, l.phone);
         else if (act === 'ltext') location.href = smsHref(l.phone, `Hi ${l.name.split(' ')[0]}, it's ${OWNER || 'me'}. `);
-        else if (act === 'lgo') window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(l.addr), '_blank');
+        else if (act === 'lgo') window.open(appleMaps(l.addr), '_blank');
         else if (act === 'lsnz') { l.next = addDays(3, l.next && l.next > todayISO() ? l.next : todayISO()); saveLeads(); render(); toast('Follow up ' + fmtDate(l.next)); }
         else if (act === 'lstage') { if (l.stage === 'lost') { l.stage = 'new'; saveLeads(); render(); } else if (l.stage === 'sold') toast('Already sold'); else leadStageMenu(l); }
         else openLead(l.id);
@@ -1798,11 +1886,11 @@
       if (act === 'search') { tabHist = []; jobTab = 'chat'; chatSearch = true; render(); window.scrollTo(0, 0); setTimeout(() => $('#sq').focus(), 80); return; }
       if (act === 'searchx') { chatSearch = false; render(); return; }
       if (act === 'jump') { pendingJump = el.dataset.id; tabHist = []; jobTab = 'chat'; render(); return; }
-      if (act === 'navjob') return void window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent((jobs[curJob] || {}).addr || ''), '_blank');
+      if (act === 'navjob') return void window.open(appleMaps((jobs[curJob] || {}).addr || ''), '_blank');
       if (act === 'addto') return openSheet(null, el.dataset.p);
       if (act === 'openjob') { curJob = el.dataset.p; jobTab = 'chat'; view = 'job'; render(); return; }
       if (act === 'jtab') { jobTab = el.dataset.tab; render(); if (jobTab !== 'chat') window.scrollTo(0, 0); return; }
-      if (act === 'navjob') return void window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent((jobs[curJob] || {}).addr || ''), '_blank');
+      if (act === 'navjob') return void window.open(appleMaps((jobs[curJob] || {}).addr || ''), '_blank');
       if (act === 'delmsg') {
         if (!confirm('Delete this message?')) return;
         const j = jobs[curJob] || {};

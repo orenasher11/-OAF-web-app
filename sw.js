@@ -1,5 +1,5 @@
-const CACHE = 'oaf-tasks-v44';
-const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'assets/base.css?v=44', 'assets/theme.css?v=44', 'assets/app.js?v=44', 'assets/config.js?v=44', 'assets/sync.js?v=44'];
+const CACHE = 'oaf-tasks-v45';
+const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'assets/base.css?v=45', 'assets/theme.css?v=45', 'assets/app.js?v=45', 'assets/config.js?v=45', 'assets/sync.js?v=45'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)));
@@ -11,7 +11,7 @@ self.addEventListener('activate', e => {
 });
 // network first so updates show up, cache as offline fallback
 self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET') return;
+  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== self.location.origin) return;
   e.respondWith(
     fetch(e.request, { cache: 'no-cache' }).then(r => {
       const copy = r.clone();
