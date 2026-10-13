@@ -230,7 +230,7 @@
         if (!th) throw new Error('That link is missing its sign-in part. Copy the link again from the email.');
         res = await sb.auth.verifyOtp({ token_hash: th, type: ty });
       }
-      if (res.error) throw new Error(/expired|invalid/i.test(res.error.message) ? 'That link was already used or has expired. Go back and ask for a new one. Copy it without tapping it.' : res.error.message);
+      if (res.error) throw new Error(res.error.message + ' (' + (res.error.status || res.error.code || 'error') + '). If you tapped the link before copying it, ask for a new one.');
       await afterLogin(res.data.user);
     });
     else if (id === 'c-savename') guard(async () => {
