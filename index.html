@@ -10,8 +10,8 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <title>My Tasks</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<link rel="stylesheet" href="assets/base.css?v=48">
-<link rel="stylesheet" href="assets/theme.css?v=48">
+<link rel="stylesheet" href="assets/base.css?v=49">
+<link rel="stylesheet" href="assets/theme.css?v=49">
 </head>
 <body class="blueprint">
 <div class="app">
@@ -386,7 +386,7 @@
 <script>
 // Safety net: shows a repair bar if the app fails to start or throws an error. Never deletes your saved tasks.
 (function () {
-  var EXPECT = '48', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
+  var EXPECT = '49', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
   function show(t) { try { msg.textContent = t; bar.hidden = false; } catch (e) {} }
   window.__oafNotify = show;
   window.addEventListener('error', function (e) { if (e.message && /ResizeObserver|Script error/.test(e.message)) return; show('Error: ' + (e.message || 'unknown') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
@@ -413,9 +413,9 @@
 })();
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="assets/config.js?v=48"></script>
+<script src="assets/config.js?v=49"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="assets/app.js?v=48"></script>
-<script src="assets/sync.js?v=48"></script>
+<script src="assets/app.js?v=49"></script>
+<script src="assets/sync.js?v=49"></script>
 </body>
 </html>

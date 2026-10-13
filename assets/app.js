@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '48';
+  const APP_VERSION = '49';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -1110,7 +1110,7 @@
 
   // ---- map of jobs and leads (Leaflet + OpenStreetMap data) ----
   const SOCAL = [[32.3, -120.7], [35.7, -114.2]], HOME_KEY = 'oaf-home-v1', DAY_KEY = 'oaf-day-v1';
-  let cmpOn = false, cmpSel = [], lmap = null, mapView = null, pinLayer = null, geoBusy = false, myPos = null, nearOn = false, dayStops = [];
+  let cmpSel = [], lmap = null, mapView = null, pinLayer = null, geoBusy = false, myPos = null, nearOn = false, dayStops = [];
   try { dayStops = JSON.parse(localStorage.getItem(DAY_KEY)) || []; } catch {}
   const saveDay = () => { try { localStorage.setItem(DAY_KEY, JSON.stringify(dayStops)); } catch {} };
   const getHome = () => { try { return JSON.parse(localStorage.getItem(HOME_KEY)) || { lat: 34.0522, lng: -118.2437, name: 'Los Angeles' }; } catch { return { lat: 34.0522, lng: -118.2437, name: 'Los Angeles' }; } };
@@ -1141,28 +1141,38 @@
     } catch {}
     geoBusy = false; mapStatus();
   }
+  let holdAt = 0; const HOLD_MS = 1000;
   function drawPins() {
     if (!lmap || !pinLayer) return; pinLayer.clearLayers();
-    const items = mapItems().filter(mapPlaced);
+    const items = mapItems().filter(mapPlaced), anchored = cmpSel.length > 0, mk = {};
     items.forEach(it => {
-      const sel = cmpSel.indexOf(it.k), icon = L.divIcon({ className: 'pinwrap', html: `<span class="pin ${it.kind}${sel >= 0 ? ' sel' : ''}" style="background:${it.color}">${sel >= 0 ? '<b>' + String.fromCharCode(65 + sel) + '</b>' : ''}</span>`, iconSize: [22, 22], iconAnchor: [11, 11] });
-      const m = L.marker([it.rec.lat, it.rec.lng], { icon }).addTo(pinLayer);
-      if (cmpOn) { m.on('click', () => { const i = cmpSel.indexOf(it.k); if (i >= 0) cmpSel.splice(i, 1); else if (cmpSel.length < 4) cmpSel.push(it.k); else toast('Pick up to 4 jobs'); drawPins(); }); return; }
+      const sel = cmpSel.indexOf(it.k), icon = L.divIcon({ className: 'pinwrap', html: `<span class="pin ${it.kind}${sel >= 0 ? ' sel' : ''}" style="background:${it.color}">${sel >= 0 ? '<b>' + (sel === 0 ? 'A' : sel) + '</b>' : ''}</span>`, iconSize: [22, 22], iconAnchor: [11, 11] });
+      const m = L.marker([it.rec.lat, it.rec.lng], { icon, keyboard: false }).addTo(pinLayer); mk[it.k] = m;
+      const el = m.getElement();
+      if (el) {
+        let t = null, x0 = 0, y0 = 0;
+        const stop = () => { clearTimeout(t); t = null; };
+        el.addEventListener('contextmenu', ev => ev.preventDefault());
+        el.addEventListener('pointerdown', ev => { x0 = ev.clientX; y0 = ev.clientY; stop(); t = setTimeout(() => { t = null; holdAt = Date.now(); if (navigator.vibrate) try { navigator.vibrate(30); } catch {} cmpSel = [it.k]; toast('Starting point: ' + it.title + '. Now tap other pins.'); drawPins(); }, HOLD_MS); });
+        el.addEventListener('pointermove', ev => { if (t && Math.hypot(ev.clientX - x0, ev.clientY - y0) > 10) stop(); });
+        ['pointerup', 'pointercancel', 'pointerleave'].forEach(n => el.addEventListener(n, stop));
+      }
+      if (anchored) { m.on('click', () => { if (Date.now() - holdAt < 700) return; const i = cmpSel.indexOf(it.k); if (i === 0) cmpSel = []; else if (i > 0) cmpSel.splice(i, 1); else if (cmpSel.length < 4) cmpSel.push(it.k); else toast('Up to 3 pins from your starting point'); drawPins(); }); return; }
       const org = myPos || getHome();
       m.bindPopup(`<b>${esc(it.title)}</b><br><small>${esc(it.kind === 'job' ? it.sub : it.addr)}</small><div class="drv popdrv" data-f="${org.lat},${org.lng}" data-t="${it.rec.lat},${it.rec.lng}"><small>Checking drive time…</small></div><div class="pbtns"><button data-act="mapnav" data-a="${esc(it.addr)}">🧭 Go</button><button data-act="mapday" data-k="${esc(it.k)}">＋ Day</button><button data-act="mapopen" data-k="${esc(it.k)}">Open</button></div>`);
     });
     const pts = cmpSel.map(k => items.find(i => i.k === k)).filter(Boolean);
-    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) L.polyline([[pts[i].rec.lat, pts[i].rec.lng], [pts[j].rec.lat, pts[j].rec.lng]], { color: '#ff6a1a', weight: 3, dashArray: '2 7', interactive: false }).addTo(pinLayer);
+    for (let j = 1; j < pts.length; j++) L.polyline([[pts[0].rec.lat, pts[0].rec.lng], [pts[j].rec.lat, pts[j].rec.lng]], { color: '#ff6a1a', weight: 3, dashArray: '2 7', interactive: false }).addTo(pinLayer);
+    pts.slice(1).forEach(p => driveInfo(pts[0].rec, p.rec).then(r => { if (mk[p.k] && lmap) mk[p.k].bindTooltip('🚗 ' + fmtDrive(r.s), { permanent: true, direction: 'top', offset: [0, -10], className: 'drvtip' }).openTooltip(); }).catch(() => {}));
     paintCmp(pts);
   }
   function paintCmp(pts) {
     const box = document.getElementById('cmpBox'); if (!box) return;
-    if (!cmpOn) { box.innerHTML = ''; return; }
+    if (!cmpSel.length) { box.innerHTML = ''; return; }
     if (!pts) pts = cmpSel.map(k => mapItems().find(i => i.k === k)).filter(i => i && mapPlaced(i));
-    if (pts.length < 2) { box.innerHTML = `<div class="hint">Tap ${pts.length ? 'one more pin' : '2 to 4 pins on the map'} to see how far apart they are.</div>`; return; }
-    const L2 = n => String.fromCharCode(65 + n), rows = [];
-    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) rows.push(`<div class="srow"><span class="sico">${L2(i)}↔${L2(j)}</span><span class="slbl"><b>${esc(pts[i].title)}</b><small>to ${esc(pts[j].title)}<br><span class="drv" data-f="${pts[i].rec.lat},${pts[i].rec.lng}" data-t="${pts[j].rec.lat},${pts[j].rec.lng}">…</span></small></span></div>`);
-    box.innerHTML = `<div class="ssec">How far apart</div><div class="scard">${rows.join('')}</div><button class="jbtn wide" data-act="mapcmpday">＋ Add these to My day</button>`;
+    if (!pts.length) { box.innerHTML = ''; return; }
+    const rows = pts.slice(1).map((p, n) => `<div class="srow"><span class="sico">${n + 1}</span><span class="slbl"><b>${esc(p.title)}</b><small><span class="drv" data-f="${pts[0].rec.lat},${pts[0].rec.lng}" data-t="${p.rec.lat},${p.rec.lng}">…</span> from ${esc(pts[0].title)}</small></span><button class="spill" data-act="mapnav" data-a="${esc(p.addr)}">🧭 Go</button></div>`);
+    box.innerHTML = `<div class="ssec">From: ${esc(pts[0].title)} (A)</div>${rows.length ? `<div class="scard">${rows.join('')}</div>` : '<div class="hint">Now tap other pins to see how long it takes to get there.</div>'}<div class="mapbar2"><button data-act="mapcmpday">＋ Add to My day</button><button data-act="mapcmpclear">✖ Clear</button></div>`;
     fillDrive(box);
   }
   function initMap() {
@@ -1180,7 +1190,7 @@
     drawPins(); mapStatus(); geocodeMissing();
     setTimeout(() => lmap && lmap.invalidateSize(), 150);
   }
-  function destroyMap() { if (lmap) { try { lmap.remove(); } catch {} lmap = null; } if (view !== 'map') { mapView = null; cmpOn = false; cmpSel = []; } }
+  function destroyMap() { if (lmap) { try { lmap.remove(); } catch {} lmap = null; } if (view !== 'map') { mapView = null; cmpSel = []; } }
   function dayList() {
     const all = mapItems(), items = dayStops.map(k => all.find(i => i.k === k)).filter(i => i && mapPlaced(i));
     let cur = myPos || getHome(), left = items.slice(), out = [];
@@ -1207,8 +1217,8 @@
     if (tot) { const legs = [...document.querySelectorAll('.drv.day')]; const secs = legs.reduce((s, e) => s + (+e.dataset.s || 0), 0); tot.textContent = legs.length && secs ? ' · about ' + fmtDrive(secs) + ' of driving' : ''; }
   }
   function mapAct(act, el) {
-    if (act === 'mapcmp') { cmpOn = !cmpOn; cmpSel = []; return render(); }
-    if (act === 'mapcmpday') { cmpSel.forEach(k => { if (!dayStops.includes(k)) dayStops.push(k); }); saveDay(); cmpOn = false; cmpSel = []; toast('Added to My day'); return render(); }
+    if (act === 'mapcmpclear') { cmpSel = []; return drawPins(); }
+    if (act === 'mapcmpday') { cmpSel.forEach(k => { if (!dayStops.includes(k)) dayStops.push(k); }); saveDay(); cmpSel = []; toast('Added to My day'); return render(); }
       if (act === 'mapnav') return window.open(appleMaps(el.dataset.a), '_blank');
       if (act === 'mapfit') { mapView = null; if (lmap) lmap.fitBounds(SOCAL); return; }
       if (act === 'mapopen') { const [kd, ...r] = el.dataset.k.split(':'), id = r.join(':'); if (kd === 'job') { curJob = id; jobTab = 'chat'; tabHist = []; chatSearch = false; chatLimit = 300; view = 'job'; render(); } else { view = 'leads'; render(); } return; }
@@ -1221,8 +1231,8 @@
   function mapHTML() {
     const day = dayList(), h = getHome();
     const near = nearOn && myPos ? mapItems().filter(mapPlaced).map(i => ({ i, mi: milesBetween(myPos, i.rec) })).sort((x, y) => x.mi - y.mi).slice(0, 10) : [];
-    return `<div class="mapbar"><button data-act="mapfit">🗺️ All SoCal</button><button data-act="mapcmp" class="${cmpOn ? 'on' : ''}">${cmpOn ? '✅ Comparing' : '📏 Compare'}</button><button data-act="maplocate">📍 Near me</button><button data-act="maphome">🏠 Home: ${esc(h.name)}</button></div>
-      <div id="jmap" class="jmap"></div><div class="mapnote" id="mapStatus"></div><div id="cmpBox"></div>
+    return `<div class="mapbar"><button data-act="mapfit">🗺️ All SoCal</button><button data-act="maplocate">📍 Near me</button><button data-act="maphome">🏠 Home: ${esc(h.name)}</button></div>
+      <div id="jmap" class="jmap"></div><div class="mapnote" id="mapStatus"></div><div class="mapnote">💡 Hold a pin for 1 second, then tap other pins to see how long it takes to get there.</div><div id="cmpBox"></div>
       <div class="mapkey"><span><i style="background:#f59e0b"></i>Lead</span><span><i style="background:#2563eb"></i>Job</span><span><i style="background:#16a34a"></i>Late stage</span><span>Dashed circle = 300 mi from home</span></div>
       ${near.length ? `<div class="ssec">Closest to you</div><div class="scard">${near.map(x => `<button class="srow" data-act="mapopen" data-k="${esc(x.i.k)}"><span class="sico">${x.i.kind === 'job' ? '💼' : '☎️'}</span><span class="slbl"><b>${esc(x.i.title)}</b><small>${esc(x.i.kind === 'job' ? x.i.sub : x.i.addr)}</small></span><span class="sval">${Math.round(x.mi)} mi</span><span class="schev">›</span></button>`).join('')}</div>` : ''}
       <div class="ssec">My day${day.length ? ' · ' + day.length + ' stops' : ''}<span id="dayTot"></span></div>
