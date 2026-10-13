@@ -113,7 +113,8 @@
       for (const a of d.data.attach) {
         if (meta.up[a.id]) continue;
         const blob = await A.blobOf(a.id, true); if (!blob) continue;
-        const { error } = await sb.storage.from('media').upload(ws + '/' + a.id, blob, { contentType: a.mime || blob.type || 'application/octet-stream', upsert: true });
+        let body = blob; try { body = await blob.arrayBuffer(); } catch {}
+        const { error } = await sb.storage.from('media').upload(ws + '/' + a.id, body, { contentType: a.mime || blob.type || 'application/octet-stream', upsert: true });
         if (!error) { meta.up[a.id] = 1; saveMeta(); } else { err = 'Some files could not upload yet: ' + (error.message || error.error || 'unknown') + (blob.size ? ' (' + Math.round(blob.size / 1048576 * 10) / 10 + ' MB)' : ''); }
       }
     }
