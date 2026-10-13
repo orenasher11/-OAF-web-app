@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '45';
+  const APP_VERSION = '46';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -1110,7 +1110,7 @@
 
   // ---- map of jobs and leads (Leaflet + OpenStreetMap data) ----
   const SOCAL = [[32.3, -120.7], [35.7, -114.2]], HOME_KEY = 'oaf-home-v1', DAY_KEY = 'oaf-day-v1';
-  let lmap = null, pinLayer = null, geoBusy = false, myPos = null, nearOn = false, dayStops = [];
+  let lmap = null, mapView = null, pinLayer = null, geoBusy = false, myPos = null, nearOn = false, dayStops = [];
   try { dayStops = JSON.parse(localStorage.getItem(DAY_KEY)) || []; } catch {}
   const saveDay = () => { try { localStorage.setItem(DAY_KEY, JSON.stringify(dayStops)); } catch {} };
   const getHome = () => { try { return JSON.parse(localStorage.getItem(HOME_KEY)) || { lat: 34.0522, lng: -118.2437, name: 'Los Angeles' }; } catch { return { lat: 34.0522, lng: -118.2437, name: 'Los Angeles' }; } };
@@ -1153,7 +1153,9 @@
     const box = document.getElementById('jmap'); if (!box) return;
     if (lmap) { try { lmap.remove(); } catch {} lmap = null; }
     if (!window.L) { box.innerHTML = '<div class="empty small"><div class="big">🗺️</div>The map needs an internet connection to load.</div>'; return; }
-    lmap = L.map(box, { zoomControl: true, attributionControl: true }).fitBounds(SOCAL);
+    lmap = L.map(box, { zoomControl: true, attributionControl: true });
+    if (mapView) lmap.setView(mapView.c, mapView.z, { animate: false }); else lmap.fitBounds(SOCAL);
+    lmap.on('moveend', () => { if (lmap) mapView = { c: lmap.getCenter(), z: lmap.getZoom() }; });
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(lmap);
     const h = getHome(); L.circle([h.lat, h.lng], { radius: 300 * 1609.34, color: '#0f2747', weight: 1.5, dashArray: '6 6', fillOpacity: 0.03, interactive: false }).addTo(lmap);
     L.marker([h.lat, h.lng], { icon: L.divIcon({ className: 'pinwrap', html: '<span class="pin home">🏠</span>', iconSize: [26, 26], iconAnchor: [13, 13] }), interactive: false }).addTo(lmap);
@@ -1162,7 +1164,7 @@
     drawPins(); mapStatus(); geocodeMissing();
     setTimeout(() => lmap && lmap.invalidateSize(), 150);
   }
-  function destroyMap() { if (lmap) { try { lmap.remove(); } catch {} lmap = null; } }
+  function destroyMap() { if (lmap) { try { lmap.remove(); } catch {} lmap = null; } if (view !== 'map') mapView = null; }
   function dayList() {
     const all = mapItems(), items = dayStops.map(k => all.find(i => i.k === k)).filter(i => i && mapPlaced(i));
     let cur = myPos || getHome(), left = items.slice(), out = [];
@@ -1171,7 +1173,7 @@
   }
   function mapAct(act, el) {
       if (act === 'mapnav') return window.open(appleMaps(el.dataset.a), '_blank');
-      if (act === 'mapfit') { if (lmap) lmap.fitBounds(SOCAL); return; }
+      if (act === 'mapfit') { mapView = null; if (lmap) lmap.fitBounds(SOCAL); return; }
       if (act === 'mapopen') { const [kd, ...r] = el.dataset.k.split(':'), id = r.join(':'); if (kd === 'job') { curJob = id; jobTab = 'chat'; tabHist = []; chatSearch = false; chatLimit = 300; view = 'job'; render(); } else { view = 'leads'; render(); } return; }
       if (act === 'mapday') { if (!dayStops.includes(el.dataset.k)) { dayStops.push(el.dataset.k); saveDay(); } toast('Added to My day'); const keep = lmap && { c: lmap.getCenter(), z: lmap.getZoom() }; render(); if (keep && lmap) lmap.setView(keep.c, keep.z, { animate: false }); return; }
       if (act === 'mapundo') { dayStops = dayStops.filter(k => k !== el.dataset.k); saveDay(); return render(); }
