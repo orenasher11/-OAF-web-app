@@ -495,3 +495,4 @@ body.inchat main{padding-top:calc(122px + env(safe-area-inset-top))}
 .pbtns{display:flex;gap:6px;margin-top:8px}
 .pbtns button{flex:1;border:0;border-radius:10px;background:var(--accent,#ff6a1a);color:#fff;font:700 13px var(--font);padding:8px 6px}
 .leaflet-popup-content{font-family:var(--font);margin:12px 14px}
+.drv{font-weight:700;color:var(--text)}.popdrv{margin-top:6px;font-size:13px}.popdrv small{color:var(--muted)}

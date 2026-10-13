@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '46';
+  const APP_VERSION = '47';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -1145,8 +1145,8 @@
     if (!lmap || !pinLayer) return; pinLayer.clearLayers();
     mapItems().filter(mapPlaced).forEach(it => {
       const icon = L.divIcon({ className: 'pinwrap', html: `<span class="pin ${it.kind}" style="background:${it.color}"></span>`, iconSize: [22, 22], iconAnchor: [11, 11] });
-      const dist = myPos ? ' · ' + Math.round(milesBetween(myPos, it.rec)) + ' mi away' : '';
-      L.marker([it.rec.lat, it.rec.lng], { icon }).addTo(pinLayer).bindPopup(`<b>${esc(it.title)}</b><br><small>${esc(it.kind === 'job' ? it.sub : it.addr)}${dist}</small><div class="pbtns"><button data-act="mapnav" data-a="${esc(it.addr)}">🧭 Go</button><button data-act="mapday" data-k="${esc(it.k)}">＋ Day</button><button data-act="mapopen" data-k="${esc(it.k)}">Open</button></div>`);
+      const org = myPos || getHome(), dist = '';
+      L.marker([it.rec.lat, it.rec.lng], { icon }).addTo(pinLayer).bindPopup(`<b>${esc(it.title)}</b><br><small>${esc(it.kind === 'job' ? it.sub : it.addr)}${dist}</small><div class="drv popdrv" data-f="${org.lat},${org.lng}" data-t="${it.rec.lat},${it.rec.lng}"><small>Checking drive time…</small></div><div class="pbtns"><button data-act="mapnav" data-a="${esc(it.addr)}">🧭 Go</button><button data-act="mapday" data-k="${esc(it.k)}">＋ Day</button><button data-act="mapopen" data-k="${esc(it.k)}">Open</button></div>`);
     });
   }
   function initMap() {
@@ -1159,8 +1159,8 @@
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(lmap);
     const h = getHome(); L.circle([h.lat, h.lng], { radius: 300 * 1609.34, color: '#0f2747', weight: 1.5, dashArray: '6 6', fillOpacity: 0.03, interactive: false }).addTo(lmap);
     L.marker([h.lat, h.lng], { icon: L.divIcon({ className: 'pinwrap', html: '<span class="pin home">🏠</span>', iconSize: [26, 26], iconAnchor: [13, 13] }), interactive: false }).addTo(lmap);
-    pinLayer = L.layerGroup().addTo(lmap);
-    lmap.on('popupopen', ev => { ev.popup.getElement().querySelectorAll('[data-act]').forEach(b => { b.onclick = () => { mapAct(b.dataset.act, b); }; }); });
+    pinLayer = L.layerGroup().addTo(lmap); fillDrive();
+    lmap.on('popupopen', ev => { fillDrive(ev.popup.getElement()); ev.popup.getElement().querySelectorAll('[data-act]').forEach(b => { b.onclick = () => { mapAct(b.dataset.act, b); }; }); });
     drawPins(); mapStatus(); geocodeMissing();
     setTimeout(() => lmap && lmap.invalidateSize(), 150);
   }
@@ -1168,8 +1168,27 @@
   function dayList() {
     const all = mapItems(), items = dayStops.map(k => all.find(i => i.k === k)).filter(i => i && mapPlaced(i));
     let cur = myPos || getHome(), left = items.slice(), out = [];
-    while (left.length) { left.sort((x, y) => milesBetween(cur, x.rec) - milesBetween(cur, y.rec)); const n = left.shift(); out.push({ it: n, mi: milesBetween(cur, n.rec) }); cur = n.rec; }
+    while (left.length) { left.sort((x, y) => milesBetween(cur, x.rec) - milesBetween(cur, y.rec)); const n = left.shift(); out.push({ it: n, mi: milesBetween(cur, n.rec), from: cur }); cur = n.rec; }
     return out;
+  }
+  const driveCache = {};
+  const fmtDrive = s => { const m = Math.max(1, Math.round(s / 60)), h = Math.floor(m / 60); return (h ? h + ' hr ' + (m % 60) + ' min' : m + ' min'); };
+  async function driveInfo(f, t) {
+    const key = [f.lat, f.lng, t.lat, t.lng].map(x => (+x).toFixed(4)).join(',');
+    if (driveCache[key]) return driveCache[key];
+    const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${f.lng},${f.lat};${t.lng},${t.lat}?overview=false`);
+    const d = await r.json(); const rt = d && d.routes && d.routes[0]; if (!rt) throw new Error('no route');
+    return (driveCache[key] = { s: rt.duration, mi: rt.distance / 1609.34 });
+  }
+  async function fillDrive(root) {
+    const els = [...(root || document).querySelectorAll('.drv:not([data-done])')];
+    for (const el of els) {
+      const [fa, fo] = el.dataset.f.split(',').map(Number), [ta, to] = el.dataset.t.split(',').map(Number);
+      try { const r = await driveInfo({ lat: fa, lng: fo }, { lat: ta, lng: to }); el.textContent = '🚗 ' + fmtDrive(r.s) + ' · ' + Math.round(r.mi) + ' mi'; el.dataset.s = r.s; el.dataset.done = '1'; }
+      catch { el.textContent = ''; el.dataset.done = '1'; }
+    }
+    const tot = document.getElementById('dayTot');
+    if (tot) { const legs = [...document.querySelectorAll('.drv.day')]; const secs = legs.reduce((s, e) => s + (+e.dataset.s || 0), 0); tot.textContent = legs.length && secs ? ' · about ' + fmtDrive(secs) + ' of driving' : ''; }
   }
   function mapAct(act, el) {
       if (act === 'mapnav') return window.open(appleMaps(el.dataset.a), '_blank');
@@ -1182,14 +1201,14 @@
       if (act === 'maphome') return openPick('Set your home base', [{ label: '📍 Use my current location', fn: () => { if (!navigator.geolocation) return toast('Location is not available'); navigator.geolocation.getCurrentPosition(p => { try { localStorage.setItem(HOME_KEY, JSON.stringify({ lat: p.coords.latitude, lng: p.coords.longitude, name: 'My location' })); } catch {} render(); }, () => toast('Allow location for this site in Settings')); } }, { label: '🏙️ Los Angeles', fn: () => { try { localStorage.setItem(HOME_KEY, JSON.stringify({ lat: 34.0522, lng: -118.2437, name: 'Los Angeles' })); } catch {} render(); } }, { label: '🌴 Palm Springs', fn: () => { try { localStorage.setItem(HOME_KEY, JSON.stringify({ lat: 33.8303, lng: -116.5453, name: 'Palm Springs' })); } catch {} render(); } }, { label: '⛱️ San Diego', fn: () => { try { localStorage.setItem(HOME_KEY, JSON.stringify({ lat: 32.7157, lng: -117.1611, name: 'San Diego' })); } catch {} render(); } }]);
   }
   function mapHTML() {
-    const day = dayList(), tot = day.reduce((s, x) => s + x.mi, 0), h = getHome();
+    const day = dayList(), h = getHome();
     const near = nearOn && myPos ? mapItems().filter(mapPlaced).map(i => ({ i, mi: milesBetween(myPos, i.rec) })).sort((x, y) => x.mi - y.mi).slice(0, 10) : [];
     return `<div class="mapbar"><button data-act="mapfit">🗺️ All SoCal</button><button data-act="maplocate">📍 Near me</button><button data-act="maphome">🏠 Home: ${esc(h.name)}</button></div>
       <div id="jmap" class="jmap"></div><div class="mapnote" id="mapStatus"></div>
       <div class="mapkey"><span><i style="background:#f59e0b"></i>Lead</span><span><i style="background:#2563eb"></i>Job</span><span><i style="background:#16a34a"></i>Late stage</span><span>Dashed circle = 300 mi from home</span></div>
       ${near.length ? `<div class="ssec">Closest to you</div><div class="scard">${near.map(x => `<button class="srow" data-act="mapopen" data-k="${esc(x.i.k)}"><span class="sico">${x.i.kind === 'job' ? '💼' : '☎️'}</span><span class="slbl"><b>${esc(x.i.title)}</b><small>${esc(x.i.kind === 'job' ? x.i.sub : x.i.addr)}</small></span><span class="sval">${Math.round(x.mi)} mi</span><span class="schev">›</span></button>`).join('')}</div>` : ''}
-      <div class="ssec">My day${day.length ? ' · ' + day.length + ' stops · about ' + Math.round(tot) + ' mi in a straight line' : ''}</div>
-      ${day.length ? `<div class="scard">${day.map((x, n) => `<div class="srow"><span class="sico">${n + 1}</span><span class="slbl"><b>${esc(x.it.title)}</b><small>${Math.round(x.mi)} mi from ${n ? 'previous stop' : myPos ? 'you' : 'home'}</small></span><button class="spill" data-act="mapnav" data-a="${esc(x.it.addr)}">🧭 Go</button><button class="cx" data-act="mapundo" data-k="${esc(x.it.k)}" aria-label="Remove">×</button></div>`).join('')}</div><button class="jbtn wide" data-act="mapclear">Clear my day</button>` : '<div class="hint">Tap a pin and choose <b>＋ Day</b>. The app orders your stops from nearest to farthest.</div>'}`;
+      <div class="ssec">My day${day.length ? ' · ' + day.length + ' stops' : ''}<span id="dayTot"></span></div>
+      ${day.length ? `<div class="scard">${day.map((x, n) => `<div class="srow"><span class="sico">${n + 1}</span><span class="slbl"><b>${esc(x.it.title)}</b><small><span class="drv day" data-f="${x.from.lat},${x.from.lng}" data-t="${x.it.rec.lat},${x.it.rec.lng}">…</span> from ${n ? 'previous stop' : myPos ? 'you' : 'home'}</small></span><button class="spill" data-act="mapnav" data-a="${esc(x.it.addr)}">🧭 Go</button><button class="cx" data-act="mapundo" data-k="${esc(x.it.k)}" aria-label="Remove">×</button></div>`).join('')}</div><button class="jbtn wide" data-act="mapclear">Clear my day</button>` : '<div class="hint">Tap a pin and choose <b>＋ Day</b>. The app orders your stops from nearest to farthest and shows the drive time between them. Times do not include live traffic. Apple Maps shows traffic when you tap Go.</div>'}`;
   }
 
   function render() {
