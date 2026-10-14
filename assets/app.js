@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '57';
+  const APP_VERSION = '58';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -765,10 +765,12 @@
   let mnRepSel = [];
   function paintReps() {
     const names = [...new Set([...team.map(x => x.name).filter(n => n && n !== OWNER), ...mnRepSel])];
-    $('#mn-reps').innerHTML = names.length ? names.map(nm => `<button type="button" class="chip ${mnRepSel.includes(nm) ? 'on' : ''}" data-r="${esc(nm)}">${esc(nm)}</button>`).join('') : '<span class="hint">No team members yet. Add reps under More → 👥 My team.</span>';
+    $('#mn-reps').innerHTML = names.map(nm => `<button type="button" class="chip ${mnRepSel.includes(nm) ? 'on' : ''}" data-r="${esc(nm)}">${esc(nm)}</button>`).join('') + '<button type="button" class="chip addsub" data-addrep="1">＋ Add a rep</button>';
     mnNet();
   }
-  $('#mn-reps').onclick = e => { const c = e.target.closest('[data-r]'); if (!c) return; const nm = c.dataset.r; mnRepSel = mnRepSel.includes(nm) ? mnRepSel.filter(x => x !== nm) : [...mnRepSel, nm]; paintReps(); };
+  $('#mn-reps').onclick = e => {
+    if (e.target.closest('[data-addrep]')) { const nm = (window.prompt('Rep name') || '').trim(); if (nm && !mnRepSel.includes(nm)) { mnRepSel.push(nm); paintReps(); } return; }
+    const c = e.target.closest('[data-r]'); if (!c) return; const nm = c.dataset.r; mnRepSel = mnRepSel.includes(nm) ? mnRepSel.filter(x => x !== nm) : [...mnRepSel, nm]; paintReps(); };
   function mnNet() {
     const num = v => parseInt(String(v).replace(/[^0-9]/g, ''), 10) || 0, j0 = jobs[moneyJob] || {}, lp = $('#mn-lead').value.trim();
     const j = { contract: num($('#mn-contract').value), seller: $('#mn-seller').value, repNames: mnRepSel.slice(), leadPct: lp === '' ? undefined : parseFloat(lp) || 0,
