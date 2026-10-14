@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '53';
+  const APP_VERSION = '54';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -357,6 +357,39 @@
     paintTodoBar();
     $('#apVia').lastChild.textContent = sendVia === 'wa' ? 'Sending via WhatsApp' : 'Sending via Messages';
   }
+  // ---- read a contract PDF sent in the chat and offer to record its amount ----
+  const loadScript = src => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+  async function pdfText(blob) {
+    if (!window.pdfjsLib) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const doc = await window.pdfjsLib.getDocument({ data: await blob.arrayBuffer() }).promise, out = [];
+    for (let p = 1; p <= Math.min(doc.numPages, 8); p++) {
+      const items = (await (await doc.getPage(p)).getTextContent()).items; let line = '', y = null;
+      items.forEach(it => { const yy = Math.round(it.transform[5]); if (y !== null && Math.abs(yy - y) > 2) { out.push(line); line = ''; } y = yy; line += it.str + ' '; }); out.push(line);
+    }
+    return out;
+  }
+  function findContractAmount(lines) {
+    const money = /\$\s?(\d{1,3}(?:,\d{3})+(?:\.\d{2})?|\d{4,}(?:\.\d{2})?)/g, key = /(contract (price|amount|sum|total)|total (contract|price|amount|cost)|grand total|project total|total)/i;
+    const all = [], keyed = [];
+    lines.forEach((ln, i) => { for (const m of (ln + ' ' + (key.test(ln) ? lines[i + 1] || '' : '')).matchAll(money)) { const v = parseFloat(m[1].replace(/,/g, '')); if (v >= 1000) { all.push(v); if (key.test(ln)) keyed.push({ v, label: (ln.match(key) || [''])[0] }); } } });
+    if (keyed.length) { const k = keyed.sort((a, b) => b.v - a.v)[0]; return { amount: k.v, label: k.label.trim() }; }
+    return all.length ? { amount: Math.max(...all), label: 'largest amount' } : null;
+  }
+  async function maybeContract(job, f) {
+    const isPdf = /pdf/i.test(f.mime || '') || /\.pdf$/i.test(f.name || ''), named = /contract|agreement|proposal|estimate|signed/i.test(f.name || '');
+    if (!isPdf) { if (named) openPick('Is this the contract?', [{ label: '💵 Yes, enter the contract amount', fn: () => openMoney(job) }, { label: 'No', fn: () => {} }]); return; }
+    let lines; try { lines = await pdfText(f.blob); } catch { if (named) openPick('Is this the contract?', [{ label: '💵 Yes, enter the contract amount', fn: () => openMoney(job) }, { label: 'No', fn: () => {} }]); return; }
+    const text = lines.join(' ');
+    if (!named && !/contract|agreement|proposal|estimate/i.test(text)) return;
+    const r = findContractAmount(lines);
+    if (!r) { if (named) openPick('Contract file saved', [{ label: '💵 Enter the contract amount', fn: () => openMoney(job) }, { label: 'Not a contract', fn: () => {} }]); return; }
+    const j = jobs[job] || {};
+    openPick('Contract found: ' + money0(r.amount) + (j.contract && j.contract !== r.amount ? ' (now ' + money0(j.contract) + ')' : ''), [
+      { label: '✅ Record ' + money0(r.amount) + ' as the contract', fn: () => { const jj = jobs[job] = jobs[job] || {}; jj.contract = r.amount; if (!jj.soldOn) jj.soldOn = todayISO(); saveJobs(); logMsg(job, 'note', '📄 Contract recorded: ' + money0(r.amount) + '. Estimated commission after costs: ' + money0(jobNet(jj).net) + '.'); render(); toast('Contract recorded'); } },
+      { label: '✏️ Use a different amount', fn: () => openMoney(job) },
+      { label: '✖ Not a contract', fn: () => {} }]);
+  }
   function sendChat() {
     const text = $('#chatIn').value.trim();
     if (!text && !pending.length) { toast('Tap the 🎤 on your keyboard to dictate'); $('#chatIn').focus(); return; }
@@ -368,6 +401,7 @@
       let shared = null;
       if (navigator.canShare && navigator.canShare({ files })) shared = navigator.share({ files, text: text || undefined }).catch(() => {});
       logMsg(curJob, 'out', text, { attach, via: 'share' });
+      const chk = pending.map(p => ({ name: p.name, mime: p.mime, blob: p.blob })), chkJob = curJob; setTimeout(() => chk.forEach(f => maybeContract(chkJob, f)), 700);
       pending = []; $('#chatIn').value = ''; paintTray(); autoGrow(); render();
       if (!shared) toast('Saved in the chat. Sharing is not available on this device.');
       return;
