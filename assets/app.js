@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '56';
+  const APP_VERSION = '57';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -602,7 +602,7 @@
   }
   const inR = (d, r) => d && d >= r[0] && d <= r[1];
   const leadPctOf = j => (j && j.leadPct !== undefined && j.leadPct !== '' && j.leadPct !== null) ? +j.leadPct : cfg.leadFirst;
-  const repsOf = j => Math.max(1, Math.min(10, parseInt(j && j.reps, 10) || 1));
+  const repsOf = j => Array.isArray(j && j.repNames) ? 1 + j.repNames.length : Math.max(1, Math.min(10, parseInt(j && j.reps, 10) || 1));
   function earnings(range) {
     const r = { deals: 0, contracts: 0, revenue: 0, upWon: 0, upPlay: 0, upOff: 0, leadFirst: 0, leadUp: 0, costs: 0, over: 0 }; let pool = 0;
     Object.values(jobs).forEach(j => {
@@ -621,7 +621,7 @@
     const own = !j.seller, up = (j.upsells || []).filter(u => u.status === 'won').reduce((s, u) => s + u.amount, 0), n = repsOf(j);
     const revenue = (own ? (j.contract || 0) : 0) + up, lead = (own ? (j.contract || 0) * leadPctOf(j) / 100 : 0) + up * cfg.leadUp / 100;
     const costs = (j.costs || []).reduce((s, c) => s + (c.amount || 0), 0), profit = revenue - lead - costs, pct = cfg.split / n, share = profit * pct / 100, over = !own && j.contract ? j.contract * cfg.override / 100 : 0;
-    return { revenue, lead, costs, profit, share, over, reps: n, pct, net: share + over };
+    return { revenue, lead, costs, profit, share, over, reps: n, pct, net: share + over, names: (j.repNames || []) };
   }
   function screenMoney() {
     const range = periodRange(moneyPer), e = earnings(range), ytd = earnings(periodRange('year'));
@@ -631,7 +631,7 @@
     const list = Object.entries(jobs).filter(([, j]) => j && (j.contract || (j.upsells || []).length)).sort((a, b) => String(b[1].soldOn || '').localeCompare(String(a[1].soldOn || '')));
     const noCon = Object.entries(jobs).filter(([, j]) => j && !j.contract && !(j.upsells || []).length);
     const jr = ([n, j]) => { const ups = j.upsells || [], won = ups.filter(u => u.status === 'won').reduce((a, u) => a + u.amount, 0), off = ups.filter(u => u.status === 'offered').reduce((a, u) => a + u.amount, 0);
-      return `<button class="srow" data-act="moneyjob" data-p="${esc(n)}"><span class="sico">💼</span><span class="slbl"><b>${esc(j.addr || n)}</b><small>${esc(n)}${j.seller ? ' · sold by ' + esc(j.seller) : ''}${won ? ' · ' + money0(won) + ' upsell won' : ''}${off ? ' · ' + money0(off) + ' offered' : ''}${j.contract ? ' · you keep ' + money0(jobNet(j).net) : ''}</small></span><span class="sval">${j.contract ? money0(j.contract) : 'Add $'}</span><span class="schev">›</span></button>`; };
+      return `<button class="srow" data-act="moneyjob" data-p="${esc(n)}"><span class="sico">💼</span><span class="slbl"><b>${esc(j.addr || n)}</b><small>${esc(n)}${j.seller ? ' · sold by ' + esc(j.seller) : ''}${won ? ' · ' + money0(won) + ' upsell won' : ''}${off ? ' · ' + money0(off) + ' offered' : ''}${(j.repNames || []).length ? ' · with ' + esc(j.repNames.join(', ')) : ''}${j.contract ? ' · you keep ' + money0(jobNet(j).net) : ''}</small></span><span class="sval">${j.contract ? money0(j.contract) : 'Add $'}</span><span class="schev">›</span></button>`; };
     return `<div class="seg">${seg('month', 'This month')}${seg('last', 'Last month')}${seg('year', 'This year')}</div>
       <div class="bigcard"><div class="bl">You keep</div><div class="bn">${money0(e.net)}</div><div class="bs">${money0(e.revenue)} sales − ${money0(e.lead)} lead cost − ${money0(e.costs)} expenses = ${money0(e.profit)} profit<br>Your share (${cfg.split}%, divided when reps share a file) ${money0(e.share)}${e.over ? ' + ' + money0(e.over) + ' overrides' : ''}<br>${e.deals} ${e.deals === 1 ? 'job' : 'jobs'} sold · ${money0(e.contracts)} in contracts</div></div>
       <div class="scard">
@@ -754,7 +754,7 @@
     $('#mnTitle').textContent = j.addr || n; $('#mn-contract').value = j.contract || ''; $('#mn-sold').value = j.soldOn || '';
     $('#mn-seller').innerHTML = '<option value="">Me (you sold it)</option>' + team.map(x => `<option ${j.seller === x.name ? 'selected' : ''}>${esc(x.name)}</option>`).join('') + (j.seller && !team.some(x => x.name === j.seller) ? `<option selected>${esc(j.seller)}</option>` : '');
     $('#upRows').innerHTML = ''; (j.upsells || []).forEach(addUpRow);
-    $('#costRows').innerHTML = ''; (j.costs || []).forEach(addCostRow); $('#mn-lead').value = j.leadPct !== undefined && j.leadPct !== '' ? j.leadPct : ''; $('#mn-lead').placeholder = cfg.leadFirst; $('#mn-reps').value = String(repsOf(j));
+    $('#costRows').innerHTML = ''; (j.costs || []).forEach(addCostRow); $('#mn-lead').value = j.leadPct !== undefined && j.leadPct !== '' ? j.leadPct : ''; $('#mn-lead').placeholder = cfg.leadFirst; mnRepSel = Array.isArray(j.repNames) ? j.repNames.slice() : (parseInt(j.reps, 10) > 1 ? Array.from({ length: parseInt(j.reps, 10) - 1 }, (_, i) => 'Rep ' + (i + 2)) : []); paintReps();
     mnRoom(); $('#moneyBg').classList.add('open');
   }
   function mnRoom() {
@@ -762,16 +762,23 @@
     mnNet();
     $('#mnRoom').innerHTML = sm.approved ? `💡 Approved up to <b>${money0(sm.approved)}</b>. Room left to upsell: <b>${money0(sm.room)}</b>` : '';
   }
+  let mnRepSel = [];
+  function paintReps() {
+    const names = [...new Set([...team.map(x => x.name).filter(n => n && n !== OWNER), ...mnRepSel])];
+    $('#mn-reps').innerHTML = names.length ? names.map(nm => `<button type="button" class="chip ${mnRepSel.includes(nm) ? 'on' : ''}" data-r="${esc(nm)}">${esc(nm)}</button>`).join('') : '<span class="hint">No team members yet. Add reps under More → 👥 My team.</span>';
+    mnNet();
+  }
+  $('#mn-reps').onclick = e => { const c = e.target.closest('[data-r]'); if (!c) return; const nm = c.dataset.r; mnRepSel = mnRepSel.includes(nm) ? mnRepSel.filter(x => x !== nm) : [...mnRepSel, nm]; paintReps(); };
   function mnNet() {
     const num = v => parseInt(String(v).replace(/[^0-9]/g, ''), 10) || 0, j0 = jobs[moneyJob] || {}, lp = $('#mn-lead').value.trim();
-    const j = { contract: num($('#mn-contract').value), seller: $('#mn-seller').value, reps: $('#mn-reps').value, leadPct: lp === '' ? undefined : parseFloat(lp) || 0,
+    const j = { contract: num($('#mn-contract').value), seller: $('#mn-seller').value, repNames: mnRepSel.slice(), leadPct: lp === '' ? undefined : parseFloat(lp) || 0,
       upsells: [...document.querySelectorAll('#upRows .uprow')].map(r => ({ status: r.querySelector('.u-st').value, amount: num(r.querySelector('.u-amt').value) })),
       costs: [...document.querySelectorAll('#costRows .uprow')].map(r => ({ amount: num(r.querySelector('.c-amt').value) })) };
     const n = jobNet(j);
-    $('#mnNet').innerHTML = (j.contract || j.upsells.length) ? `<b>Estimated pay on this job: ${money0(n.net)}</b><br><small>${money0(n.revenue)} sale − ${money0(n.lead)} lead cost − ${money0(n.costs)} expenses = ${money0(n.profit)} profit. Your share: ${+n.pct.toFixed(2)}%${n.reps > 1 ? ' (' + cfg.split + '% ÷ ' + n.reps + ' reps)' : ''}${n.over ? ' + ' + money0(n.over) + ' override' : ''}.</small>` : '';
+    $('#mnNet').innerHTML = (j.contract || j.upsells.length) ? `<b>Estimated pay on this job: ${money0(n.net)}</b><br><small>${money0(n.revenue)} sale − ${money0(n.lead)} lead cost − ${money0(n.costs)} expenses = ${money0(n.profit)} profit. ${n.reps > 1 ? 'Each person gets ' : 'Your share: '}${+n.pct.toFixed(2)}%${n.reps > 1 ? ' (' + cfg.split + '% ÷ ' + n.reps + ' people)' : ''}${n.over ? ' + ' + money0(n.over) + ' override' : ''}.${n.names.length ? '<br>You ' + money0(n.share) + ' · ' + n.names.map(nm => esc(nm) + ' ' + money0(n.share)).join(' · ') : ''}</small>` : '';
   }
-  ['#mn-contract', '#mn-lead', '#mn-seller', '#mn-reps'].forEach(s => $(s).addEventListener('input', mnNet));
-  $('#mn-seller').addEventListener('change', mnNet); $('#mn-reps').addEventListener('change', mnNet); $('#upRows').addEventListener('input', mnNet); $('#upRows').addEventListener('change', mnNet); $('#costRows').addEventListener('input', mnNet);
+  ['#mn-contract', '#mn-lead', '#mn-seller'].forEach(s => $(s).addEventListener('input', mnNet));
+  $('#mn-seller').addEventListener('change', mnNet); $('#upRows').addEventListener('input', mnNet); $('#upRows').addEventListener('change', mnNet); $('#costRows').addEventListener('input', mnNet);
   $('#mnAddCost').onclick = () => addCostRow({});
   $('#costRows').onclick = e => { if (e.target.classList.contains('s-del')) { e.target.closest('.uprow').remove(); mnNet(); } };
   $('#mn-contract').addEventListener('input', mnRoom);
@@ -786,7 +793,7 @@
       const st = r.querySelector('.u-st').value, amt = num(r.querySelector('.u-amt').value);
       return { id: r.dataset.id || uid(), title: r.querySelector('.u-title').value.trim(), amount: amt, status: st, at: r.dataset.at || todayISO(), wonAt: st === 'won' ? (r.dataset.won || todayISO()) : '' };
     }).filter(u => u.title || u.amount);
-    const rp = parseInt($('#mn-reps').value, 10) || 1; if (rp > 1) j.reps = rp; else delete j.reps;
+    if (mnRepSel.length) j.repNames = mnRepSel.slice(); else delete j.repNames; delete j.reps;
     const lp = $('#mn-lead').value.trim(); if (lp === '') delete j.leadPct; else j.leadPct = parseFloat(lp) || 0;
     j.costs = [...document.querySelectorAll('#costRows .costrow')].map(r => ({ id: r.dataset.id || uid(), title: r.querySelector('.c-title').value.trim(), amount: num(r.querySelector('.c-amt').value), date: r.dataset.date || todayISO() })).filter(c => c.title || c.amount);
     saveJobs(); $('#moneyBg').classList.remove('open'); render(); toast('Saved');
