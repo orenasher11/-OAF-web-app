@@ -11,8 +11,8 @@
 <title>My Tasks</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-<link rel="stylesheet" href="assets/base.css?v=54">
-<link rel="stylesheet" href="assets/theme.css?v=54">
+<link rel="stylesheet" href="assets/base.css?v=55">
+<link rel="stylesheet" href="assets/theme.css?v=55">
 </head>
 <body class="blueprint">
 <div class="app">
@@ -336,13 +336,13 @@
   <div class="sheet" role="dialog">
     <div class="grab"></div>
     <h2>Rates &amp; goal</h2>
-    <label for="cf-pct">Your commission on jobs you sell and on upsells (%)</label>
-    <input id="cf-pct" inputmode="decimal" placeholder="10">
+    <label for="cf-pct">Your share of the profit after lead cost and expenses (%)</label>
+    <input id="cf-pct" inputmode="decimal" placeholder="50">
     <label for="cf-over">Your override on rep-sold jobs (%)</label>
     <input id="cf-over" inputmode="decimal" placeholder="1">
-    <label for="cf-lead1">Lead cost on a first sale (% of your commission)</label>
+    <label for="cf-lead1">Lead cost on the first sale (% of the contract)</label>
     <input id="cf-lead1" inputmode="decimal" placeholder="15">
-    <label for="cf-lead2">Lead cost on upsells (% of your commission)</label>
+    <label for="cf-lead2">Lead cost on upsells (% of the upsell)</label>
     <input id="cf-lead2" inputmode="decimal" placeholder="6">
     <label for="cf-goal">Yearly goal ($)</label>
     <input id="cf-goal" inputmode="numeric" placeholder="500000">
@@ -399,7 +399,7 @@
 <script>
 // Safety net: shows a repair bar if the app fails to start or throws an error. Never deletes your saved tasks.
 (function () {
-  var EXPECT = '54', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
+  var EXPECT = '55', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
   function show(t) { try { msg.textContent = t; bar.hidden = false; } catch (e) {} }
   window.__oafNotify = show;
   window.addEventListener('error', function (e) { if (e.message && /ResizeObserver|Script error/.test(e.message)) return; show('Error: ' + (e.message || 'unknown') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
@@ -428,9 +428,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js"></script>
-<script src="assets/config.js?v=54"></script>
+<script src="assets/config.js?v=55"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="assets/app.js?v=54"></script>
-<script src="assets/sync.js?v=54"></script>
+<script src="assets/app.js?v=55"></script>
+<script src="assets/sync.js?v=55"></script>
 </body>
 </html>

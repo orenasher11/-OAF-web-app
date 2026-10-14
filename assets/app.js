@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '54';
+  const APP_VERSION = '55';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -41,7 +41,7 @@
   const stageIdx = j => { const g = getStages(j); return g.length ? Math.max(...g.map(x => JSTAGES.indexOf(x))) : -1; };
   let stageF = 'all';
   const BOTS = [{ name: 'Job Assistant', role: 'AI bot · coming soon' }];
-  let cfg = { pct: 10, override: 1, leadFirst: 15, leadUp: 6, goal: 500000, finance: FIN_DEFAULT.slice() };
+  let cfg = { pct: 10, split: 50, override: 1, leadFirst: 15, leadUp: 6, goal: 500000, finance: FIN_DEFAULT.slice() };
   try { cfg = { ...cfg, ...(JSON.parse(localStorage.getItem('oaf-cfg-v1')) || {}) }; } catch {}
   const finList = () => (cfg.finance && cfg.finance.length ? cfg.finance : FIN_DEFAULT);
   const finOptions = sel => ['<option value="">Not set</option>', ...[...new Set([...finList(), ...(sel && !finList().includes(sel) ? [sel] : [])])].map(f => `<option ${f === sel ? 'selected' : ''}>${esc(f)}</option>`)].join('');
@@ -386,7 +386,7 @@
     if (!r) { if (named) openPick('Contract file saved', [{ label: '💵 Enter the contract amount', fn: () => openMoney(job) }, { label: 'Not a contract', fn: () => {} }]); return; }
     const j = jobs[job] || {};
     openPick('Contract found: ' + money0(r.amount) + (j.contract && j.contract !== r.amount ? ' (now ' + money0(j.contract) + ')' : ''), [
-      { label: '✅ Record ' + money0(r.amount) + ' as the contract', fn: () => { const jj = jobs[job] = jobs[job] || {}; jj.contract = r.amount; if (!jj.soldOn) jj.soldOn = todayISO(); saveJobs(); logMsg(job, 'note', '📄 Contract recorded: ' + money0(r.amount) + '. Estimated commission after costs: ' + money0(jobNet(jj).net) + '.'); render(); toast('Contract recorded'); } },
+      { label: '✅ Record ' + money0(r.amount) + ' as the contract', fn: () => { const jj = jobs[job] = jobs[job] || {}; jj.contract = r.amount; if (!jj.soldOn) jj.soldOn = todayISO(); saveJobs(); logMsg(job, 'note', '📄 Contract recorded: ' + money0(r.amount) + '. Estimated pay so far: ' + money0(jobNet(jj).net) + ' (after ' + money0(jobNet(jj).lead) + ' lead cost and ' + money0(jobNet(jj).costs) + ' expenses, split ' + cfg.split + '%).'); render(); toast('Contract recorded'); } },
       { label: '✏️ Use a different amount', fn: () => openMoney(job) },
       { label: '✖ Not a contract', fn: () => {} }]);
   }
@@ -603,45 +603,45 @@
   const inR = (d, r) => d && d >= r[0] && d <= r[1];
   const leadPctOf = j => (j && j.leadPct !== undefined && j.leadPct !== '' && j.leadPct !== null) ? +j.leadPct : cfg.leadFirst;
   function earnings(range) {
-    const r = { deals: 0, contracts: 0, base: 0, over: 0, upWon: 0, upComm: 0, upPlay: 0, upOff: 0, leadFirst: 0, leadUp: 0, costs: 0 };
+    const r = { deals: 0, contracts: 0, revenue: 0, upWon: 0, upPlay: 0, upOff: 0, leadFirst: 0, leadUp: 0, costs: 0, over: 0 };
     Object.values(jobs).forEach(j => {
       if (!j) return;
-      if (j.contract && inR(j.soldOn, range)) { r.deals++; r.contracts += j.contract; if (j.seller) r.over += j.contract * cfg.override / 100; else { const c = j.contract * cfg.pct / 100; r.base += c; r.leadFirst += c * leadPctOf(j) / 100; } }
+      if (j.contract && inR(j.soldOn, range)) { r.deals++; r.contracts += j.contract; if (j.seller) r.over += j.contract * cfg.override / 100; else { r.revenue += j.contract; r.leadFirst += j.contract * leadPctOf(j) / 100; } }
       (j.upsells || []).forEach(u => {
-        if (u.status === 'won' && inR(u.wonAt || u.at, range)) { r.upWon += u.amount; const c = u.amount * cfg.pct / 100; r.upComm += c; r.leadUp += c * cfg.leadUp / 100; }
+        if (u.status === 'won' && inR(u.wonAt || u.at, range)) { r.upWon += u.amount; r.revenue += u.amount; r.leadUp += u.amount * cfg.leadUp / 100; }
         if (u.status === 'offered') { r.upPlay += u.amount; r.upOff++; }
       });
       (j.costs || []).forEach(c => { if (inR(c.date || j.soldOn || todayISO(), range)) r.costs += c.amount || 0; });
     });
-    r.total = r.base + r.over + r.upComm; r.lead = r.leadFirst + r.leadUp; r.net = r.total - r.lead - r.costs; return r;
+    r.lead = r.leadFirst + r.leadUp; r.profit = r.revenue - r.lead - r.costs; r.share = r.profit * cfg.split / 100; r.net = r.share + r.over; return r;
   }
-  // everything one job has earned and cost so far
+  // one job: sale + upsells, minus lead cost, minus expenses, then your share of what is left
   function jobNet(j) {
-    const own = !j.seller, base = j.contract ? j.contract * (own ? cfg.pct : cfg.override) / 100 : 0;
-    const up = (j.upsells || []).filter(u => u.status === 'won').reduce((s, u) => s + u.amount, 0) * cfg.pct / 100;
-    const lead = (own ? base * leadPctOf(j) / 100 : 0) + up * cfg.leadUp / 100, costs = (j.costs || []).reduce((s, c) => s + (c.amount || 0), 0);
-    return { gross: base + up, lead, costs, net: base + up - lead - costs };
+    const own = !j.seller, up = (j.upsells || []).filter(u => u.status === 'won').reduce((s, u) => s + u.amount, 0);
+    const revenue = (own ? (j.contract || 0) : 0) + up, lead = (own ? (j.contract || 0) * leadPctOf(j) / 100 : 0) + up * cfg.leadUp / 100;
+    const costs = (j.costs || []).reduce((s, c) => s + (c.amount || 0), 0), profit = revenue - lead - costs, share = profit * cfg.split / 100, over = !own && j.contract ? j.contract * cfg.override / 100 : 0;
+    return { revenue, lead, costs, profit, share, over, net: share + over };
   }
   function screenMoney() {
     const range = periodRange(moneyPer), e = earnings(range), ytd = earnings(periodRange('year'));
     const now = new Date(), dayOfYear = Math.max(1, Math.round((now - new Date(now.getFullYear(), 0, 0)) / 864e5));
-    const pace = ytd.total / dayOfYear * 365, pct = cfg.goal ? Math.min(100, Math.round(ytd.total / cfg.goal * 100)) : 0;
+    const pace = ytd.net / dayOfYear * 365, pct = cfg.goal ? Math.min(100, Math.round(ytd.net / cfg.goal * 100)) : 0;
     const seg = (k, l) => `<button class="${moneyPer === k ? 'on' : ''}" data-act="mper" data-t="${k}">${l}</button>`;
     const list = Object.entries(jobs).filter(([, j]) => j && (j.contract || (j.upsells || []).length)).sort((a, b) => String(b[1].soldOn || '').localeCompare(String(a[1].soldOn || '')));
     const noCon = Object.entries(jobs).filter(([, j]) => j && !j.contract && !(j.upsells || []).length);
     const jr = ([n, j]) => { const ups = j.upsells || [], won = ups.filter(u => u.status === 'won').reduce((a, u) => a + u.amount, 0), off = ups.filter(u => u.status === 'offered').reduce((a, u) => a + u.amount, 0);
       return `<button class="srow" data-act="moneyjob" data-p="${esc(n)}"><span class="sico">💼</span><span class="slbl"><b>${esc(j.addr || n)}</b><small>${esc(n)}${j.seller ? ' · sold by ' + esc(j.seller) : ''}${won ? ' · ' + money0(won) + ' upsell won' : ''}${off ? ' · ' + money0(off) + ' offered' : ''}${j.contract ? ' · you keep ' + money0(jobNet(j).net) : ''}</small></span><span class="sval">${j.contract ? money0(j.contract) : 'Add $'}</span><span class="schev">›</span></button>`; };
     return `<div class="seg">${seg('month', 'This month')}${seg('last', 'Last month')}${seg('year', 'This year')}</div>
-      <div class="bigcard"><div class="bl">You keep (after lead cost and expenses)</div><div class="bn">${money0(e.net)}</div><div class="bs">${money0(e.total)} commission − ${money0(e.lead)} lead cost − ${money0(e.costs)} expenses<br>${e.deals} ${e.deals === 1 ? 'job' : 'jobs'} sold · ${money0(e.contracts)} in contracts</div></div>
+      <div class="bigcard"><div class="bl">You keep</div><div class="bn">${money0(e.net)}</div><div class="bs">${money0(e.revenue)} sales − ${money0(e.lead)} lead cost − ${money0(e.costs)} expenses = ${money0(e.profit)} profit<br>Your ${cfg.split}% share ${money0(e.share)}${e.over ? ' + ' + money0(e.over) + ' overrides' : ''}<br>${e.deals} ${e.deals === 1 ? 'job' : 'jobs'} sold · ${money0(e.contracts)} in contracts</div></div>
       <div class="scard">
-        <div class="mrow"><span class="sico">💼</span><span class="mbody"><b>Jobs you sold</b><small>${cfg.pct}% commission</small></span><b>${money0(e.base)}</b></div>
+        <div class="mrow"><span class="sico">💼</span><span class="mbody"><b>Sales and upsells</b><small>Contracts you sold + upsells won (${money0(e.upWon)})</small></span><b>${money0(e.revenue)}</b></div>
+        <div class="mrow"><span class="sico">🎯</span><span class="mbody"><b>Lead cost</b><small>${cfg.leadFirst}% of the contract, ${cfg.leadUp}% of upsells</small></span><b>−${money0(e.lead)}</b></div>
+        <div class="mrow"><span class="sico">🧾</span><span class="mbody"><b>Expenses</b><small>Turf, materials, fees you added to jobs</small></span><b>−${money0(e.costs)}</b></div>
+        <div class="mrow"><span class="sico">📊</span><span class="mbody"><b>Profit to split</b><small>You get ${cfg.split}%, the company gets ${100 - cfg.split}%</small></span><b>${money0(e.profit)}</b></div>
         <div class="mrow"><span class="sico">🤝</span><span class="mbody"><b>Rep overrides</b><small>${cfg.override}% of rep deals</small></span><b>${money0(e.over)}</b></div>
-        <div class="mrow"><span class="sico">⬆️</span><span class="mbody"><b>Upsells won</b><small>${money0(e.upWon)} sold at ${cfg.pct}%</small></span><b>${money0(e.upComm)}</b></div>
-        <div class="mrow"><span class="sico">🎯</span><span class="mbody"><b>Lead cost</b><small>${cfg.leadFirst}% of first-sale commission, ${cfg.leadUp}% of upsell commission</small></span><b>−${money0(e.lead)}</b></div>
-        <div class="mrow"><span class="sico">🧾</span><span class="mbody"><b>Expenses</b><small>Gas, materials, fees you added to jobs</small></span><b>−${money0(e.costs)}</b></div>
         <div class="mrow"><span class="sico">⏳</span><span class="mbody"><b>Upsells in play</b><small>${e.upOff} offered, waiting on the customer</small></span><b>${money0(e.upPlay)}</b></div></div>
       <div class="ssec">Yearly goal</div>
-      <div class="scard goal"><div class="grow"><b>${money0(ytd.total)}</b><span>of ${money0(cfg.goal)} · ${pct}%</span></div>
+      <div class="scard goal"><div class="grow"><b>${money0(ytd.net)}</b><span>of ${money0(cfg.goal)} · ${pct}%</span></div>
         <div class="prog"><i style="width:${pct}%"></i></div>
         <div class="gnote">At this pace you finish the year at <b>${money0(pace)}</b>${cfg.goal && pace < cfg.goal ? ` (${money0(cfg.goal - pace)} short)` : cfg.goal ? ' 🎉' : ''}</div>
         <button class="spill" data-act="cfgedit">⚙ Rates &amp; goal</button></div>
@@ -767,7 +767,7 @@
       upsells: [...document.querySelectorAll('#upRows .uprow')].map(r => ({ status: r.querySelector('.u-st').value, amount: num(r.querySelector('.u-amt').value) })),
       costs: [...document.querySelectorAll('#costRows .uprow')].map(r => ({ amount: num(r.querySelector('.c-amt').value) })) };
     const n = jobNet(j);
-    $('#mnNet').innerHTML = (j.contract || j.upsells.length) ? `<b>Estimated commission after costs: ${money0(n.net)}</b><br><small>${money0(n.gross)} commission − ${money0(n.lead)} lead cost − ${money0(n.costs)} expenses</small>` : '';
+    $('#mnNet').innerHTML = (j.contract || j.upsells.length) ? `<b>Estimated pay on this job: ${money0(n.net)}</b><br><small>${money0(n.revenue)} sale − ${money0(n.lead)} lead cost − ${money0(n.costs)} expenses = ${money0(n.profit)} profit. Your ${cfg.split}% share${n.over ? ' + ' + money0(n.over) + ' override' : ''}.</small>` : '';
   }
   ['#mn-contract', '#mn-lead', '#mn-seller'].forEach(s => $(s).addEventListener('input', mnNet));
   $('#mn-seller').addEventListener('change', mnNet); $('#upRows').addEventListener('input', mnNet); $('#upRows').addEventListener('change', mnNet); $('#costRows').addEventListener('input', mnNet);
@@ -793,10 +793,10 @@
   $('#cfgBg').onclick = e => { if (e.target.id === 'cfgBg') $('#cfgBg').classList.remove('open'); };
   $('#cfgSave').onclick = () => {
     const f = v => parseFloat(String(v).replace(/[^0-9.]/g, '')) || 0;
-    cfg.pct = f($('#cf-pct').value); cfg.override = f($('#cf-over').value); cfg.goal = f($('#cf-goal').value); cfg.leadFirst = f($('#cf-lead1').value); cfg.leadUp = f($('#cf-lead2').value);
+    cfg.split = Math.min(100, f($('#cf-pct').value)); cfg.override = f($('#cf-over').value); cfg.goal = f($('#cf-goal').value); cfg.leadFirst = f($('#cf-lead1').value); cfg.leadUp = f($('#cf-lead2').value);
     saveCfg(); $('#cfgBg').classList.remove('open'); render();
   };
-  function openCfg() { $('#cf-pct').value = cfg.pct; $('#cf-over').value = cfg.override; $('#cf-goal').value = cfg.goal; $('#cf-lead1').value = cfg.leadFirst; $('#cf-lead2').value = cfg.leadUp; $('#cfgBg').classList.add('open'); }
+  function openCfg() { $('#cf-pct').value = cfg.split; $('#cf-over').value = cfg.override; $('#cf-goal').value = cfg.goal; $('#cf-lead1').value = cfg.leadFirst; $('#cf-lead2').value = cfg.leadUp; $('#cfgBg').classList.add('open'); }
 
   // ---- delete a job for good ----
   function deleteJobMenu(n) {
