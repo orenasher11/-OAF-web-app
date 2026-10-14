@@ -1,5 +1,5 @@
-const CACHE = 'oaf-tasks-v58';
-const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'assets/base.css?v=58', 'assets/theme.css?v=58', 'assets/app.js?v=58', 'assets/config.js?v=58', 'assets/sync.js?v=58'];
+const CACHE = 'oaf-tasks-v59';
+const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'assets/base.css?v=59', 'assets/theme.css?v=59', 'assets/app.js?v=59', 'assets/config.js?v=59', 'assets/sync.js?v=59'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)));

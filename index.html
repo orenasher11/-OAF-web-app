@@ -11,8 +11,8 @@
 <title>My Tasks</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-<link rel="stylesheet" href="assets/base.css?v=58">
-<link rel="stylesheet" href="assets/theme.css?v=58">
+<link rel="stylesheet" href="assets/base.css?v=59">
+<link rel="stylesheet" href="assets/theme.css?v=59">
 </head>
 <body class="blueprint">
 <div class="app">
@@ -53,6 +53,7 @@
     <button data-a="vid"><i style="background:#ffe0e0">🎥</i>Video</button>
     <button data-a="lib"><i style="background:#e0f0ff">🖼️</i>Photos &amp; videos</button>
     <button data-a="doc"><i style="background:#e8e4ff">📄</i>Document</button>
+    <button data-a="expense"><i style="background:#ffe9db">🧾</i>Add expense</button>
     <button data-a="quick"><i style="background:#fff3d6">⚡</i>Quick messages</button>
     <button data-a="photos"><i style="background:#e0f7ef">🙏</i>Ask for photos</button>
     <button data-a="import"><i style="background:#dff5e6">📥</i>Import WhatsApp chat</button>
@@ -316,7 +317,7 @@
     <div class="grab"></div>
     <h2 id="mnTitle">Contract &amp; upsells</h2>
     <label for="mn-contract">Contract value ($)</label>
-    <input id="mn-contract" inputmode="numeric" placeholder="e.g. 24500" autocomplete="off">
+    <input id="mn-contract" class="moneyin" inputmode="decimal" placeholder="e.g. 24,500" autocomplete="off">
     <div class="cstat" id="mnRoom"></div>
     <div class="row2"><div><label for="mn-sold">Sold on</label><input type="date" id="mn-sold" class="dateinput"></div>
     <div><label for="mn-seller">Sold by</label><select id="mn-seller"></select></div></div>
@@ -332,6 +333,19 @@
     <button type="button" class="chip addsub" id="mnAddCost">＋ Add expense</button>
     <div class="cstat mnnet" id="mnNet"></div>
     <div class="actions"><button class="btn ghost" id="mnCancel">Cancel</button><button class="btn primary" id="mnSave">Save</button></div>
+  </div>
+</div>
+<div class="sheet-bg" id="exBg">
+  <div class="sheet" role="dialog">
+    <div class="grab"></div>
+    <h2 id="exTitle">Add expense</h2>
+    <label for="ex-title">What was it for</label>
+    <input id="ex-title" placeholder="e.g. Turf" autocomplete="off">
+    <div class="repchips" id="exChips"></div>
+    <label for="ex-amt">Amount ($)</label>
+    <input id="ex-amt" class="moneyin" inputmode="decimal" placeholder="0" autocomplete="off">
+    <div class="actions"><button class="btn ghost" id="exCancel">Cancel</button><button class="btn primary" id="exSave">Save</button></div>
+    <button class="btn ghost wide" id="exReceipt" style="margin-top:8px">📷 Save and add a receipt photo</button>
   </div>
 </div>
 <div class="sheet-bg" id="cfgBg">
@@ -401,7 +415,7 @@
 <script>
 // Safety net: shows a repair bar if the app fails to start or throws an error. Never deletes your saved tasks.
 (function () {
-  var EXPECT = '58', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
+  var EXPECT = '59', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
   function show(t) { try { msg.textContent = t; bar.hidden = false; } catch (e) {} }
   window.__oafNotify = show;
   window.addEventListener('error', function (e) { if (e.message && /ResizeObserver|Script error/.test(e.message)) return; show('Error: ' + (e.message || 'unknown') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
@@ -430,9 +444,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js"></script>
-<script src="assets/config.js?v=58"></script>
+<script src="assets/config.js?v=59"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="assets/app.js?v=58"></script>
-<script src="assets/sync.js?v=58"></script>
+<script src="assets/app.js?v=59"></script>
+<script src="assets/sync.js?v=59"></script>
 </body>
 </html>

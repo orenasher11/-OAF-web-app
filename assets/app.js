@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '58';
+  const APP_VERSION = '59';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -357,6 +357,26 @@
     paintTodoBar();
     $('#apVia').lastChild.textContent = sendVia === 'wa' ? 'Sending via WhatsApp' : 'Sending via Messages';
   }
+  // ---- quick expense ----
+  let exJob = '', skipExp = false;
+  function openExpense(n, pre = {}) {
+    exJob = n; const j = jobs[n] || {};
+    $('#exTitle').textContent = 'Add expense · ' + (j.addr || n); $('#ex-title').value = pre.title || ''; $('#ex-amt').value = fmtAmt(pre.amount);
+    $('#exChips').innerHTML = ['Turf', 'Materials', 'Gas', 'Permit', 'Dump fee', 'Sub payment', 'Other'].map(t => `<button type="button" class="chip" data-t="${t}">${t}</button>`).join('');
+    $('#exBg').classList.add('open'); setTimeout(() => $(pre.title ? '#ex-amt' : '#ex-title').focus(), 250);
+  }
+  $('#exChips').onclick = e => { const c = e.target.closest('[data-t]'); if (!c) return; $('#ex-title').value = c.dataset.t; $('#ex-amt').focus(); };
+  function saveExpense(receipt) {
+    const title = $('#ex-title').value.trim(), amount = amt($('#ex-amt').value);
+    if (!amount) { toast('Enter the amount'); $('#ex-amt').focus(); return; }
+    const j = jobs[exJob] = jobs[exJob] || {}; j.costs = [...(j.costs || []), { id: uid(), title: title || 'Expense', amount, date: todayISO() }]; saveJobs();
+    logMsg(exJob, 'note', '🧾 Expense: ' + (title || 'Expense') + ' ' + money0(amount) + '. Estimated pay now ' + money0(jobNet(j).net) + '.');
+    $('#exBg').classList.remove('open'); render(); toast('Expense added');
+    if (receipt) setTimeout(() => $('#fCam').click(), 300);
+  }
+  $('#exSave').onclick = () => saveExpense(false); $('#exReceipt').onclick = () => saveExpense(true);
+  $('#exCancel').onclick = () => $('#exBg').classList.remove('open');
+  $('#exBg').onclick = e => { if (e.target.id === 'exBg') $('#exBg').classList.remove('open'); };
   // ---- read a contract PDF sent in the chat and offer to record its amount ----
   const loadScript = src => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
   async function pdfText(blob) {
@@ -392,6 +412,8 @@
   }
   function sendChat() {
     const text = $('#chatIn').value.trim();
+    const mx = !pending.length && !skipExp && text.match(/^(?:expense|exp|cost)\s+(.+?)\s+\$?([\d,]+(?:\.\d{1,2})?)\s*$/i);
+    if (mx) { const t0 = mx[1].replace(/^./, c => c.toUpperCase()), v0 = amt(mx[2]); return openPick('Add expense: ' + t0 + ' ' + money0(v0) + '?', [{ label: '✅ Add as an expense', fn: () => { $('#chatIn').value = ''; autoGrow(); exJob = curJob; $('#ex-title').value = t0; $('#ex-amt').value = fmtAmt(v0); saveExpense(false); } }, { label: '💬 Send as a message instead', fn: () => { skipExp = true; sendChat(); skipExp = false; } }]); }
     if (!text && !pending.length) { toast('Tap the 🎤 on your keyboard to dictate'); $('#chatIn').focus(); return; }
     if (pending.length) {
       const files = pending.map(p => new File([p.blob], p.name, { type: p.mime }));
@@ -601,6 +623,13 @@
     return [y + '-01-01', y + '-12-31'];
   }
   const inR = (d, r) => d && d >= r[0] && d <= r[1];
+  const amt = v => parseFloat(String(v).replace(/[^0-9.]/g, '')) || 0;
+  const fmtAmt = n => n ? Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '';
+  document.addEventListener('input', e => {
+    const el = e.target; if (!el.classList || !el.classList.contains('moneyin')) return;
+    const p = el.value.replace(/[^0-9.]/g, '').split('.'), int = p[0].replace(/^0+(?=\d)/, ''), dec = p.length > 1 ? '.' + p.slice(1).join('').slice(0, 2) : '';
+    el.value = (int ? Number(int).toLocaleString('en-US') : '') + dec;
+  }, true);
   const leadPctOf = j => (j && j.leadPct !== undefined && j.leadPct !== '' && j.leadPct !== null) ? +j.leadPct : cfg.leadFirst;
   const repsOf = j => Array.isArray(j && j.repNames) ? 1 + j.repNames.length : Math.max(1, Math.min(10, parseInt(j && j.reps, 10) || 1));
   function earnings(range) {
@@ -737,7 +766,7 @@
   function addUpRow(u = {}) {
     const d = document.createElement('div'); d.className = 'uprow'; d.dataset.id = u.id || ''; d.dataset.at = u.at || ''; d.dataset.won = u.wonAt || '';
     d.innerHTML = `<input class="u-title" placeholder="What was offered (e.g. backsplash)" value="${esc(u.title || '')}" autocomplete="off">
-      <input class="u-amt" inputmode="numeric" placeholder="$" value="${u.amount || ''}">
+      <input class="u-amt moneyin" inputmode="decimal" placeholder="$" value="${fmtAmt(u.amount)}">
       <select class="u-st"><option value="offered" ${u.status === 'offered' || !u.status ? 'selected' : ''}>Offered</option><option value="won" ${u.status === 'won' ? 'selected' : ''}>Won ✓</option><option value="lost" ${u.status === 'lost' ? 'selected' : ''}>Lost</option></select>
       <button type="button" class="s-del" aria-label="Remove">×</button>`;
     $('#upRows').appendChild(d);
@@ -745,20 +774,20 @@
   function addCostRow(c = {}) {
     const d = document.createElement('div'); d.className = 'uprow costrow'; d.dataset.id = c.id || ''; d.dataset.date = c.date || '';
     d.innerHTML = `<input class="u-title c-title" placeholder="What was it (gas, materials, permit…)" value="${esc(c.title || '')}" autocomplete="off">
-      <input class="u-amt c-amt" inputmode="numeric" placeholder="$" value="${c.amount || ''}">
+      <input class="u-amt c-amt moneyin" inputmode="decimal" placeholder="$" value="${fmtAmt(c.amount)}">
       <button type="button" class="s-del" aria-label="Remove">×</button>`;
     $('#costRows').appendChild(d);
   }
   function openMoney(n) {
     moneyJob = n; const j = jobs[n] || {};
-    $('#mnTitle').textContent = j.addr || n; $('#mn-contract').value = j.contract || ''; $('#mn-sold').value = j.soldOn || '';
+    $('#mnTitle').textContent = j.addr || n; $('#mn-contract').value = fmtAmt(j.contract); $('#mn-sold').value = j.soldOn || '';
     $('#mn-seller').innerHTML = '<option value="">Me (you sold it)</option>' + team.map(x => `<option ${j.seller === x.name ? 'selected' : ''}>${esc(x.name)}</option>`).join('') + (j.seller && !team.some(x => x.name === j.seller) ? `<option selected>${esc(j.seller)}</option>` : '');
     $('#upRows').innerHTML = ''; (j.upsells || []).forEach(addUpRow);
     $('#costRows').innerHTML = ''; (j.costs || []).forEach(addCostRow); $('#mn-lead').value = j.leadPct !== undefined && j.leadPct !== '' ? j.leadPct : ''; $('#mn-lead').placeholder = cfg.leadFirst; mnRepSel = Array.isArray(j.repNames) ? j.repNames.slice() : (parseInt(j.reps, 10) > 1 ? Array.from({ length: parseInt(j.reps, 10) - 1 }, (_, i) => 'Rep ' + (i + 2)) : []); paintReps();
     mnRoom(); $('#moneyBg').classList.add('open');
   }
   function mnRoom() {
-    const j = jobs[moneyJob] || {}, c = parseInt(String($('#mn-contract').value).replace(/[^0-9]/g, ''), 10) || 0, sm = finSummary({ ...j, contract: c });
+    const j = jobs[moneyJob] || {}, c = amt($('#mn-contract').value), sm = finSummary({ ...j, contract: c });
     mnNet();
     $('#mnRoom').innerHTML = sm.approved ? `💡 Approved up to <b>${money0(sm.approved)}</b>. Room left to upsell: <b>${money0(sm.room)}</b>` : '';
   }
@@ -772,7 +801,7 @@
     if (e.target.closest('[data-addrep]')) { const nm = (window.prompt('Rep name') || '').trim(); if (nm && !mnRepSel.includes(nm)) { mnRepSel.push(nm); paintReps(); } return; }
     const c = e.target.closest('[data-r]'); if (!c) return; const nm = c.dataset.r; mnRepSel = mnRepSel.includes(nm) ? mnRepSel.filter(x => x !== nm) : [...mnRepSel, nm]; paintReps(); };
   function mnNet() {
-    const num = v => parseInt(String(v).replace(/[^0-9]/g, ''), 10) || 0, j0 = jobs[moneyJob] || {}, lp = $('#mn-lead').value.trim();
+    const num = amt, lp = $('#mn-lead').value.trim();
     const j = { contract: num($('#mn-contract').value), seller: $('#mn-seller').value, repNames: mnRepSel.slice(), leadPct: lp === '' ? undefined : parseFloat(lp) || 0,
       upsells: [...document.querySelectorAll('#upRows .uprow')].map(r => ({ status: r.querySelector('.u-st').value, amount: num(r.querySelector('.u-amt').value) })),
       costs: [...document.querySelectorAll('#costRows .uprow')].map(r => ({ amount: num(r.querySelector('.c-amt').value) })) };
@@ -789,7 +818,7 @@
   $('#mnCancel').onclick = () => $('#moneyBg').classList.remove('open');
   $('#moneyBg').onclick = e => { if (e.target.id === 'moneyBg') $('#moneyBg').classList.remove('open'); };
   $('#mnSave').onclick = () => {
-    const j = jobs[moneyJob] = jobs[moneyJob] || {}, num = v => parseInt(String(v).replace(/[^0-9]/g, ''), 10) || 0;
+    const j = jobs[moneyJob] = jobs[moneyJob] || {}, num = amt;
     j.contract = num($('#mn-contract').value); j.soldOn = $('#mn-sold').value || (j.contract ? (j.soldOn || todayISO()) : ''); j.seller = $('#mn-seller').value;
     j.upsells = [...document.querySelectorAll('#upRows .uprow')].map(r => {
       const st = r.querySelector('.u-st').value, amt = num(r.querySelector('.u-amt').value);
@@ -1062,6 +1091,7 @@
         <button data-act="${j.addr ? 'navjob' : 'editjobd'}"><i>🧭</i>Navigate</button>
         <button data-act="addmember"><i>＋</i>Add</button>
         <button data-act="search"><i>🔍</i>Search</button></div>
+      ${(() => { const mm = jobNet(j); return `<button class="moneycard" data-act="moneyjob" data-p="${esc(n)}">${j.contract ? `<span class="mcl">Contract <b>${money0(j.contract)}</b></span><span class="mcr">You keep <b>${money0(mm.net)}</b></span><small>${money0(mm.lead)} lead cost · ${money0(mm.costs)} expenses${mm.reps > 1 ? ' · split ' + mm.reps + ' ways' : ''} · tap to edit</small>` : '<span class="mcl"><b>💵 Add the contract amount</b></span><small>See what you keep after lead cost and expenses</small>'}</button>`; })()}
       <div class="ssec">Media</div><div class="scard">
         ${srow('🖼️', 'Media, links and docs', media.length + links, 'jtab', 'data-tab="media"')}
         ${srow('⭐', 'Starred messages', starred, 'jtab', 'data-tab="starred"')}
@@ -1693,6 +1723,7 @@
     else if (a === 'vid') $('#fVid').click();
     else if (a === 'lib') $('#fLib').click();
     else if (a === 'doc') $('#fDoc').click();
+    else if (a === 'expense') openExpense(curJob);
     else if (a === 'quick') openMsg(curJob);
     else if (a === 'photos') { $('#chatIn').value = TEMPLATES[0][1](curJob, ad); autoGrow(); $('#chatIn').focus(); }
     else if (a === 'loc') {
