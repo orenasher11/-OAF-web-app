@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '75';
+  const APP_VERSION = '76';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -717,18 +717,29 @@
     return { ...s, lead, cost, k, profit, pct, share: profit * pct / 100 };
   }
   function salesOf(j) {
-    const out = [];
-    if (j.contract && (asRep ? repOn(j, asRep) : !j.seller)) out.push(saleCalc({ key: 'first', kind: 'first', title: 'Prime contract', amount: j.contract, leadPct: leadPctOf(j), costs: j.costs || [], reps: asRep ? jobReps(j).filter(x => x !== asRep) : (j.repNames || []), date: j.soldOn || '' }));
-    (j.upsells || []).forEach(u => out.push(saleCalc({ key: u.id, kind: 'upsell', title: u.title || 'Upsell', amount: u.amount || 0, leadPct: u.leadPct !== undefined && u.leadPct !== '' && u.leadPct !== null ? +u.leadPct : cfg.leadUp, costs: upCostsOf(u), reps: u.repNames || [], date: u.wonAt || u.at || '' })));
+    const out = [], who = OWNER || 'Owner';
+    if (j.contract) {
+      if (!asRep) { if (!j.seller) out.push(saleCalc({ key: 'first', kind: 'first', title: 'Prime contract', amount: j.contract, leadPct: leadPctOf(j), costs: j.costs || [], reps: j.repNames || [], date: soldDay(j) })); }
+      else {
+        // a rep's view: the people sharing the first sale are the seller and the other reps (or you and the reps, if you sold it)
+        const names = j.seller ? jobReps(j) : (j.repNames || []);
+        if (names.includes(asRep)) out.push(saleCalc({ key: 'first', kind: 'first', title: 'Prime contract', amount: j.contract, leadPct: leadPctOf(j), costs: j.costs || [], reps: [...names.filter(x => x !== asRep), ...(j.seller ? [] : [who])], date: soldDay(j) }));
+      }
+    }
+    (j.upsells || []).forEach(u => {
+      const names = u.repNames || [];
+      if (asRep && !names.includes(asRep)) return;
+      out.push(saleCalc({ key: u.id, kind: 'upsell', title: u.title || 'Upsell', amount: u.amount || 0, leadPct: u.leadPct !== undefined && u.leadPct !== '' && u.leadPct !== null ? +u.leadPct : cfg.leadUp, costs: upCostsOf(u), reps: asRep ? [who, ...names.filter(x => x !== asRep)] : names, date: u.wonAt || u.at || '' }));
+    });
     return out;
   }
   function earnings(range) {
     const r = { deals: 0, contracts: 0, revenue: 0, upWon: 0, upPlay: 0, upOff: 0, leadFirst: 0, leadUp: 0, costs: 0, over: 0, share: 0 };
     Object.values(jobs).forEach(j => {
       if (!j) return;
-      if (j.contract && inR(j.soldOn, range)) { r.deals++; r.contracts += j.contract; if (!asRep && j.seller) r.over += j.contract * cfg.override / 100; }
+      if (j.contract && inR(soldDay(j), range) && (!asRep || salesOf(j).some(s => s.kind === 'first'))) { r.deals++; r.contracts += j.contract; if (!asRep && j.seller) r.over += j.contract * cfg.override / 100; }
       salesOf(j).forEach(s => {
-        if (!inR(s.date || j.soldOn, range)) return;
+        if (!inR(s.date || soldDay(j), range)) return;
         r.revenue += s.amount; r.costs += s.cost; r.share += s.share;
         if (s.kind === 'first') r.leadFirst += s.lead; else { r.leadUp += s.lead; r.upWon += s.amount; }
       });
@@ -751,6 +762,12 @@
       return `<button class="srow" data-act="moneyjob" data-p="${esc(n)}"><span class="sico">💼</span><span class="slbl"><b>${esc(j.addr || n)}</b><small>${esc(n)}${j.seller ? ' · sold by ' + esc(jobReps(j).join(' + ')) : ''}${won ? ' · ' + money0(won) + ' upsell won' : ''}${off ? ' · ' + money0(off) + ' offered' : ''}${(j.repNames || []).length ? ' · with ' + esc(j.repNames.join(', ')) : ''}${j.contract ? ' · you keep ' + money0(jobNet(j).net) : ''}</small></span><span class="sval">${j.contract ? money0(j.contract) : 'Add $'}</span><span class="schev">›</span></button>`; };
     return `<div class="seg">${seg('month', 'This month')}${seg('last', 'Last month')}${seg('year', 'This year')}</div>
       <div class="bigcard"><div class="bl">You keep</div><div class="bn">${money0(e.net)}</div><div class="bs">${money0(e.revenue)} sales − ${money0(e.lead)} lead cost − ${money0(e.costs)} expenses = ${money0(e.profit)} profit<br>Your share (${cfg.split}%, divided when reps share a file) ${money0(e.share)}${e.over ? ' + ' + money0(e.over) + ' overrides' : ''}<br>${e.deals} ${e.deals === 1 ? 'job' : 'jobs'} sold · ${money0(e.contracts)} in contracts</div></div>
+      ${asRep ? '' : (() => {
+        const rows = repNames().map(nm => ({ nm, s: repStats(nm, range) })).filter(r => r.s.mine || r.s.open).sort((x, y) => y.s.mine - x.s.mine), tot = rows.reduce((t, r) => t + r.s.mine, 0), life = rows.reduce((t, r) => t + r.s.life, 0);
+        return `<div class="ssec">From my reps · your ${cfg.override}%</div>` + (rows.length ? `<div class="scard">${rows.map(r => `<button class="srow" data-act="repopen" data-r="${esc(r.nm)}"><span class="sico">👤</span><span class="slbl"><b>${esc(r.nm)}</b><small>${r.s.deals} ${r.s.deals === 1 ? 'job' : 'jobs'} sold · ${money0(r.s.sold)} in contracts</small></span><span class="sval"><b>${money0(r.s.mine)}</b></span><span class="schev">›</span></button>`).join('')}
+          <div class="mrow"><span class="sico">🤝</span><span class="mbody"><b>Total from my reps</b><small>All time ${money0(life)}. Counted once per file, split between the reps on it</small></span><b>${money0(tot)}</b></div></div>` : '<div class="hint">No rep jobs yet. Open a job, tap <b>Sold by</b> and pick the rep.</div>');
+      })()}
+      <div class="ssec">The numbers</div>
       <div class="scard">
         <div class="mrow"><span class="sico">💼</span><span class="mbody"><b>Sales and upsells</b><small>Contracts you sold + upsells won (${money0(e.upWon)})</small></span><b>${money0(e.revenue)}</b></div>
         <div class="mrow"><span class="sico">🎯</span><span class="mbody"><b>Lead cost</b><small>${cfg.leadFirst}% of the contract, ${cfg.leadUp}% of upsells</small></span><b>−${money0(e.lead)}</b></div>
@@ -1111,8 +1128,11 @@
   // A job's group has only the people you added to it (plus the rep who sold it and reps on its sales). Subs are listed separately.
   // reps on a rep-sold file: the one who sold it plus the others you add. Your override is paid once per file, so it is split between them on each rep's board.
   const jobReps = j => (j && j.seller) ? [...new Set([j.seller, ...(j.repNames || [])])] : [];
-  const repOn = (j, rep) => jobReps(j).includes(rep);
-  const defaultMemberIds = j => { const names = new Set([j.seller, ...(j.repNames || []), ...(j.upsells || []).flatMap(u => u.repNames || [])].filter(Boolean)); return team.filter(x => names.has(x.name)).map(x => x.id); };
+  // everyone named anywhere on the file (seller, reps on the first sale, reps on any upsell): the file shows on each of their boards
+  const fileReps = j => j ? [...new Set([j.seller, ...(j.repNames || []), ...(j.upsells || []).flatMap(u => u.repNames || [])].filter(Boolean))] : [];
+  const repOn = (j, rep) => fileReps(j).includes(rep);
+  const soldDay = j => (j && (j.soldOn || (j.stageAt ? String(j.stageAt).slice(0, 10) : ''))) || '';
+  const defaultMemberIds = j => { const names = new Set(fileReps(j)); return team.filter(x => names.has(x.name)).map(x => x.id); };
   const memberIds = j => Array.isArray(j.members) ? j.members : defaultMemberIds(j);
   function membersOf(n) { const j = jobs[n] || {}, ids = memberIds(j); return team.filter(x => ids.includes(x.id)).map(x => ({ ...x, kind: 'team' })); }
   // once you've chosen members by hand, a rep you pick on a sale joins the job too
@@ -1470,7 +1490,7 @@
 
   // ---- my reps: table, then one rep's jobs, map and what you earn from them ----
   let repName = '', repMap = null;
-  const repNames = () => { const s = new Set(team.map(x => x.name).filter(n => n && n !== OWNER)); Object.values(jobs).forEach(j => { if (j && !j.demo) jobReps(j).forEach(x => s.add(x)); }); return [...s].sort((x, y) => x.localeCompare(y)); };
+  const repNames = () => { const s = new Set(team.map(x => x.name).filter(n => n && n !== OWNER)); Object.values(jobs).forEach(j => { if (j && !j.demo) fileReps(j).forEach(x => s.add(x)); }); return [...s].sort((x, y) => x.localeCompare(y)); };
   const repJobs = rep => Object.entries(jobs).filter(([, j]) => j && !j.demo && repOn(j, rep));
   function lastAct(j) {
     const t = x => { const v = x ? new Date(x).getTime() : 0; return isNaN(v) ? 0 : v; };
@@ -1483,7 +1503,7 @@
     repJobs(rep).forEach(([, j]) => {
       o.total++;
       if (!j.archived) { o.open++; const d = agoDays(lastAct(j)); if (d === null || d >= 7) o.quiet++; }
-      if (j.contract) { const n = Math.max(1, jobReps(j).length), m = j.contract * cfg.override / 100 / n; o.life += m; if (inR(j.soldOn, range)) { o.deals++; o.sold += j.contract / n; o.mine += m; } }
+      if (j.contract && jobReps(j).includes(rep)) { const n = jobReps(j).length, m = j.contract * cfg.override / 100 / n; o.life += m; if (inR(soldDay(j), range)) { o.deals++; o.sold += j.contract / n; o.mine += m; } }
     });
     return o;
   }
@@ -1505,10 +1525,10 @@
     $('#h1').textContent = nm; $('#sub').textContent = 'Jobs and what you earn from this rep';
     const seg = (k, l) => `<button class="${moneyPer === k ? 'on' : ''}" data-act="mper" data-t="${k}">${l}</button>`;
     const rows = repJobs(nm).map(([n, j]) => ({ n, j, d: agoDays(lastAct(j)) })), open = rows.filter(r => !r.j.archived).sort((a, b) => (b.d === null ? 999 : b.d) - (a.d === null ? 999 : a.d)), done = rows.filter(r => r.j.archived);
-    const card = r => { const g = getStages(r.j), i = stageIdx(r.j), nr = Math.max(1, jobReps(r.j).length), mine = (r.j.contract || 0) * cfg.override / 100 / nr, quiet = !r.j.archived && (r.d === null || r.d >= 7);
+    const card = r => { const g = getStages(r.j), i = stageIdx(r.j), nr = Math.max(1, jobReps(r.j).length), mine = jobReps(r.j).includes(nm) ? (r.j.contract || 0) * cfg.override / 100 / nr : 0, quiet = !r.j.archived && (r.d === null || r.d >= 7);
       return `<button class="repjob" data-act="openjob" data-p="${esc(r.n)}"><span class="rjtop"><b>${esc(r.j.addr || r.n)}</b><span class="rjmoney">${r.j.contract ? money0(r.j.contract) : 'No contract'}</span></span>
         <span class="rjmid"><span class="stg" style="--c:${i >= 0 ? SCOL[i] : '#94a3b8'}">${g.length ? esc(g.length <= 2 ? g.join(' + ') : g[0] + ' + ' + (g.length - 1) + ' more') : 'No stage yet'}</span><span class="${quiet ? 'red' : 'muted'}">${agoTxt(r.d)}</span></span>
-        <span class="rjmid"><span class="muted">${esc(r.n)}${nr > 1 ? ' · with ' + esc(jobReps(r.j).filter(x => x !== nm).join(', ')) : ''}</span><span class="rjmine">${r.j.contract ? 'You get ' + money0(mine) + (nr > 1 ? ' (1% ÷ ' + nr + ')' : '') : ''}</span></span></button>`; };
+        <span class="rjmid"><span class="muted">${esc(r.n)}${fileReps(r.j).length > 1 ? ' · with ' + esc(fileReps(r.j).filter(x => x !== nm).join(', ')) : ''}</span><span class="rjmine">${r.j.contract && mine ? 'You get ' + money0(mine) + (nr > 1 ? ' (1% ÷ ' + nr + ')' : '') : ''}</span></span></button>`; };
     const ph = (team.find(x => x.name === nm) || {}).phone;
     return `<div class="seg">${seg('month', 'This month')}${seg('last', 'Last month')}${seg('year', 'This year')}</div>
       <div class="bigcard"><div class="bl">You earn from ${esc(nm)} ${per}</div><div class="bn">${money0(s.mine)}</div><div class="bs">${s.deals} ${s.deals === 1 ? 'job' : 'jobs'} sold · ${money0(s.sold)} in contracts<br>All time: ${money0(s.life)} · ${s.open} open ${s.open === 1 ? 'job' : 'jobs'}${s.quiet ? ' · ' + s.quiet + ' quiet' : ''}</div></div>
