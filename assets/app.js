@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '72';
+  const APP_VERSION = '73';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -1740,7 +1740,7 @@
     }
     $('#stats').innerHTML = stats; $('#stats').hidden = !stats;
     const SUBS = ['visits', 'calendar', 'deal', 'upcoming', 'reports', 'rep', 'leads'];
-    $('#jobbar').hidden = !!asRep || !['today', 'projects'].includes(view);
+    $('#jobbar').hidden = !['today', 'projects'].includes(view);
     $('#back').hidden = !(view === 'job' || view === 'evening' || SUBS.includes(view) || (view === 'subs' && pickJob));
     $('#back').textContent = view === 'rep' ? '‹ My reps' : view === 'deal' ? '‹ Back' : view === 'evening' ? '‹ Today' : view === 'job' ? '‹ Jobs' : view === 'subs' && pickJob ? '‹ Job' : '‹ More';
     const lateN = visitList().filter(v => v.state === 'late').length;
@@ -2090,7 +2090,7 @@
     if (pendingLead) { const l = leads.find(x => x.id === pendingLead); if (l) { l.stage = 'sold'; l.job = name; saveLeads(); } pendingLead = null; }
     const finCo = $('#j-fin').value, apprIn = parseInt(($('#j-appr').value || '').replace(/[^0-9]/g, ''), 10) || 0;
     const stNew = $('#j-stage').value || 'PRE NTP';
-    jobs[name] = { ...(jobs[name] || {}), stage: stNew, stages: [stNew], stageAt: new Date().toISOString(), stageLog: [{ stage: stNew, at: new Date().toISOString(), by: OWNER || '' }], ...(finCo ? { fins: [{ id: uid(), company: finCo, status: finCo === 'Cash' ? '' : 'Applied', amount: contract || 0, approved: finCo === 'Cash' ? 0 : apprIn }], finance: '', finStatus: '' } : {}), upsell: amt, ...(contract ? { contract, ...(jobMode === 'new' ? { soldOn: todayISO() } : {}) } : {}), subs, sub: undefined, phone: undefined, addr: $('#j-addr').value.trim(), ...(jobMode === 'new' ? { kick } : {}), every: jobs[name]?.every || 5 };
+    jobs[name] = { ...(jobs[name] || {}), ...(asRep ? { seller: asRep } : {}), stage: stNew, stages: [stNew], stageAt: new Date().toISOString(), stageLog: [{ stage: stNew, at: new Date().toISOString(), by: OWNER || '' }], ...(finCo ? { fins: [{ id: uid(), company: finCo, status: finCo === 'Cash' ? '' : 'Applied', amount: contract || 0, approved: finCo === 'Cash' ? 0 : apprIn }], finance: '', finStatus: '' } : {}), upsell: amt, ...(contract ? { contract, ...(jobMode === 'new' ? { soldOn: todayISO() } : {}) } : {}), subs, sub: undefined, phone: undefined, addr: $('#j-addr').value.trim(), ...(jobMode === 'new' ? { kick } : {}), every: jobs[name]?.every || 5 };
     saveJobs(); save(); closeJob();
     if (jobMode === 'old') { curJob = name; jobTab = 'chat'; tabHist = []; chatLimit = 300; view = 'job'; render(); toast('Job added. Tap ＋ then Import WhatsApp chat to bring in the history.'); return; }
     view = 'today'; filter = 'all'; render(); window.scrollTo(0, 0);
