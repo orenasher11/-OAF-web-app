@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '60';
+  const APP_VERSION = '61';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -371,7 +371,7 @@
         ${own ? row('Prime contract', money0(j.contract || 0)) : row('Contract (rep sold)', money0(j.contract || 0), '', 'Your override is ' + cfg.override + '%')}
         ${own ? row('+ Upsells won', money0(upWon), upWon ? '' : 'dim') : row('+ Upsells won', money0(upWon), upWon ? '' : 'dim')}
         ${own || upWon ? row('− Lead cost', sgn(-m.lead), 'neg', own ? (leadPctOf(j) + '% of contract' + (upWon ? ', ' + cfg.leadUp + '% of upsells' : '')) : cfg.leadUp + '% of upsells') : ''}
-        ${row('− Expenses', sgn(-m.costs), 'neg')}
+        ${row('− Expenses', sgn(-m.costs), 'neg', m.upCosts ? 'includes ' + money0(m.upCosts) + ' on upsells' : '')}
         ${row('= Profit', sgn(m.profit), 'tot')}
         ${row('× Your share', +m.pct.toFixed(2) + '%', '', m.reps > 1 ? cfg.split + '% split between ' + m.reps + ' people' : 'Sales side gets ' + cfg.split + '%')}
         ${m.over ? row('+ Override', money0(m.over)) : ''}
@@ -379,8 +379,8 @@
     const contract = j.contract
       ? `<button class="dealrow" data-act="dealcontract"><div><b>${money0(j.contract)}</b><small>${j.soldOn ? 'Sold ' + fmtDate(j.soldOn) : 'No sold date'} · ${j.seller ? 'sold by ' + esc(j.seller) : 'sold by you'}</small></div><span>✎ Edit</span></button>`
       : `<div class="bigact"><button class="jbtn primary wide" data-act="dealcontract">＋ Enter the contract amount</button><button class="jbtn wide" data-act="dealpdf">📄 Read it from the contract PDF</button><div class="hint">Or type <b>sold 54686</b> in the job chat.</div></div>`;
-    const upcards = ups.map(u => { const lead = u.amount * cfg.leadUp / 100, yours = (u.amount - lead) * cfg.split / 100 / m.reps;
-      return `<div class="upcard ${u.status}"><div class="uph"><div><b>${esc(u.title || 'Upsell')}</b><small>${u.status === 'won' ? 'Lead cost −' + money0(lead) + ' · you +' + money0(yours) + ' before expenses' : u.status === 'lost' ? 'Lost' : 'Waiting on the customer'}</small></div><span class="upamt">${money0(u.amount)}</span><button class="upedit" data-act="dealupedit" data-id="${esc(u.id)}" aria-label="Edit">✎</button></div>
+    const upcards = ups.map(u => { const lead = u.amount * cfg.leadUp / 100, uc = u.cost || 0, yours = (u.amount - lead - uc) * cfg.split / 100 / m.reps;
+      return `<div class="upcard ${u.status}"><div class="uph"><div><b>${esc(u.title || 'Upsell')}</b><small>${u.status === 'won' ? 'Lead −' + money0(lead) + ' · expenses −' + money0(uc) + ' · you +' + money0(yours) : u.status === 'lost' ? 'Lost' : 'Waiting on the customer' + (uc ? ' · expenses ' + money0(uc) + ' count once won' : '')}</small></div><span class="upamt">${money0(u.amount)}</span><button class="upedit" data-act="dealupedit" data-id="${esc(u.id)}" aria-label="Edit">✎</button></div>
         <div class="upseg">${[['offered', 'Offered'], ['won', 'Won ✓'], ['lost', 'Lost']].map(([k, l]) => `<button class="${u.status === k ? 'on ' + k : ''}" data-act="dealupst" data-id="${esc(u.id)}" data-s="${k}">${l}</button>`).join('')}</div></div>`; }).join('');
     const roomNote = sm.approved ? `<div class="hint">💡 Approved up to <b>${money0(sm.approved)}</b>. Room left to upsell: <b>${money0(sm.room)}</b></div>` : '';
     const names = [...new Set([...team.map(x => x.name).filter(x => x && x !== OWNER), ...(j.repNames || [])])];
@@ -397,9 +397,9 @@
   function openDl(mode, id) {
     dlMode = mode; dlId = id || ''; const j = jobs[dealJob] || {}, u = mode === 'upsell' && id ? (j.upsells || []).find(x => x.id === id) : null;
     $('#dlHead').textContent = mode === 'contract' ? 'Prime contract' : (u ? 'Edit upsell' : 'New upsell');
-    $('#dlTitleWrap').hidden = mode !== 'upsell'; $('#dlStatusWrap').hidden = mode !== 'upsell'; $('#dlContractWrap').hidden = mode !== 'contract'; $('#dlDel').hidden = !(mode === 'upsell' && u);
+    $('#dlTitleWrap').hidden = mode !== 'upsell'; $('#dlCostWrap').hidden = mode !== 'upsell'; $('#dlStatusWrap').hidden = mode !== 'upsell'; $('#dlContractWrap').hidden = mode !== 'contract'; $('#dlDel').hidden = !(mode === 'upsell' && u);
     $('#dl-title').value = u ? u.title || '' : ''; $('#dl-amt').value = fmtAmt(mode === 'contract' ? j.contract : (u ? u.amount : ''));
-    dlStatus = u ? u.status : 'offered'; paintDlStatus();
+    $('#dl-cost').value = fmtAmt(u && u.cost); dlStatus = u ? u.status : 'offered'; paintDlStatus();
     $('#dlChips').innerHTML = UP_IDEAS.map(t => `<button type="button" class="chip" data-t="${t}">${t}</button>`).join('');
     $('#dl-date').value = j.soldOn || todayISO();
     $('#dl-seller').innerHTML = '<option value="">Me (you sold it)</option>' + team.map(x => `<option ${j.seller === x.name ? 'selected' : ''}>${esc(x.name)}</option>`).join('') + (j.seller && !team.some(x => x.name === j.seller) ? `<option selected>${esc(j.seller)}</option>` : '');
@@ -416,8 +416,9 @@
     else {
       if (!v) { toast('Enter the amount'); return; }
       const t = $('#dl-title').value.trim() || 'Upsell', ups = j.upsells = j.upsells || [], u = dlId && ups.find(x => x.id === dlId);
-      if (u) { u.title = t; u.amount = v; if (dlStatus === 'won' && u.status !== 'won') u.wonAt = todayISO(); u.status = dlStatus; }
-      else ups.push({ id: uid(), title: t, amount: v, status: dlStatus, at: todayISO(), wonAt: dlStatus === 'won' ? todayISO() : '' });
+      const uc = amt($('#dl-cost').value);
+      if (u) { u.title = t; u.amount = v; u.cost = uc; if (dlStatus === 'won' && u.status !== 'won') u.wonAt = todayISO(); u.status = dlStatus; }
+      else ups.push({ id: uid(), title: t, amount: v, cost: uc, status: dlStatus, at: todayISO(), wonAt: dlStatus === 'won' ? todayISO() : '' });
     }
     saveJobs(); $('#dlBg').classList.remove('open'); render(); toast('Saved');
   };
@@ -492,8 +493,8 @@
   function sendChat() {
     const text = $('#chatIn').value.trim();
     const mx = !pending.length && !skipExp && text.match(/^(?:expense|exp|cost)\s+(.+?)\s+\$?([\d,]+(?:\.\d{1,2})?)\s*$/i);
-    const mu = !pending.length && !skipExp && text.match(/^(?:upsell|up)\s+(.+?)\s+\$?([\d,]+(?:\.\d{1,2})?)\s*$/i), ms = !pending.length && !skipExp && text.match(/^(?:sold|contract)\s+\$?([\d,]+(?:\.\d{1,2})?)\s*$/i);
-    if (mu) { const t1 = mu[1].replace(/^./, c => c.toUpperCase()), v1 = amt(mu[2]), add = st => { const j = jobs[curJob] = jobs[curJob] || {}; j.upsells = [...(j.upsells || []), { id: uid(), title: t1, amount: v1, status: st, at: todayISO(), wonAt: st === 'won' ? todayISO() : '' }]; saveJobs(); logMsg(curJob, 'note', (st === 'won' ? '🎉 Upsell won: ' : '⬆️ Upsell offered: ') + t1 + ' ' + money0(v1) + '.'); $('#chatIn').value = ''; autoGrow(); render(); toast('Upsell saved'); }; return openPick('Upsell: ' + t1 + ' ' + money0(v1), [{ label: '⬆️ Offered, waiting on the customer', fn: () => add('offered') }, { label: '🎉 Won', fn: () => add('won') }, { label: '💬 Send as a message instead', fn: () => { skipExp = true; sendChat(); skipExp = false; } }]); }
+    const mu = !pending.length && !skipExp && text.match(/^(?:upsell|up)\s+(.+?)\s+\$?([\d,]+(?:\.\d{1,2})?)(?:\s+(?:cost|exp|expenses?)\s+\$?([\d,]+(?:\.\d{1,2})?))?\s*$/i), ms = !pending.length && !skipExp && text.match(/^(?:sold|contract)\s+\$?([\d,]+(?:\.\d{1,2})?)\s*$/i);
+    if (mu) { const t1 = mu[1].replace(/^./, c => c.toUpperCase()), v1 = amt(mu[2]), c1 = amt(mu[3] || ''), add = st => { const j = jobs[curJob] = jobs[curJob] || {}; j.upsells = [...(j.upsells || []), { id: uid(), title: t1, amount: v1, cost: c1, status: st, at: todayISO(), wonAt: st === 'won' ? todayISO() : '' }]; saveJobs(); logMsg(curJob, 'note', (st === 'won' ? '🎉 Upsell won: ' : '⬆️ Upsell offered: ') + t1 + ' ' + money0(v1) + '.'); $('#chatIn').value = ''; autoGrow(); render(); toast('Upsell saved'); }; return openPick('Upsell: ' + t1 + ' ' + money0(v1) + (c1 ? ' · expenses ' + money0(c1) : ''), [{ label: '⬆️ Offered, waiting on the customer', fn: () => add('offered') }, { label: '🎉 Won', fn: () => add('won') }, { label: '💬 Send as a message instead', fn: () => { skipExp = true; sendChat(); skipExp = false; } }]); }
     if (ms) { const v2 = amt(ms[1]); return openPick('Record contract ' + money0(v2) + '?', [{ label: '✅ Record as the prime contract', fn: () => { const j = jobs[curJob] = jobs[curJob] || {}; j.contract = v2; if (!j.soldOn) j.soldOn = todayISO(); saveJobs(); logMsg(curJob, 'note', '📄 Contract recorded: ' + money0(v2) + '. Estimated pay so far: ' + money0(jobNet(j).net) + '.'); $('#chatIn').value = ''; autoGrow(); render(); toast('Contract recorded'); } }, { label: '💬 Send as a message instead', fn: () => { skipExp = true; sendChat(); skipExp = false; } }]); }
     if (mx) { const t0 = mx[1].replace(/^./, c => c.toUpperCase()), v0 = amt(mx[2]); return openPick('Add expense: ' + t0 + ' ' + money0(v0) + '?', [{ label: '✅ Add as an expense', fn: () => { $('#chatIn').value = ''; autoGrow(); exJob = curJob; $('#ex-title').value = t0; $('#ex-amt').value = fmtAmt(v0); saveExpense(false); } }, { label: '💬 Send as a message instead', fn: () => { skipExp = true; sendChat(); skipExp = false; } }]); }
     if (!text && !pending.length) { toast('Tap the 🎤 on your keyboard to dictate'); $('#chatIn').focus(); return; }
@@ -720,7 +721,7 @@
       if (!j) return; const n = repsOf(j);
       if (j.contract && inR(j.soldOn, range)) { r.deals++; r.contracts += j.contract; if (j.seller) r.over += j.contract * cfg.override / 100; else { const l = j.contract * leadPctOf(j) / 100; r.revenue += j.contract; r.leadFirst += l; pool += (j.contract - l) / n; } }
       (j.upsells || []).forEach(u => {
-        if (u.status === 'won' && inR(u.wonAt || u.at, range)) { const l = u.amount * cfg.leadUp / 100; r.upWon += u.amount; r.revenue += u.amount; r.leadUp += l; pool += (u.amount - l) / n; }
+        if (u.status === 'won' && inR(u.wonAt || u.at, range)) { const l = u.amount * cfg.leadUp / 100, uc = u.cost || 0; r.upWon += u.amount; r.revenue += u.amount; r.leadUp += l; r.costs += uc; pool += (u.amount - l - uc) / n; }
         if (u.status === 'offered') { r.upPlay += u.amount; r.upOff++; }
       });
       (j.costs || []).forEach(c => { if (inR(c.date || j.soldOn || todayISO(), range)) { r.costs += c.amount || 0; pool -= (c.amount || 0) / n; } });
@@ -731,8 +732,8 @@
   function jobNet(j) {
     const own = !j.seller, up = (j.upsells || []).filter(u => u.status === 'won').reduce((s, u) => s + u.amount, 0), n = repsOf(j);
     const revenue = (own ? (j.contract || 0) : 0) + up, lead = (own ? (j.contract || 0) * leadPctOf(j) / 100 : 0) + up * cfg.leadUp / 100;
-    const costs = (j.costs || []).reduce((s, c) => s + (c.amount || 0), 0), profit = revenue - lead - costs, pct = cfg.split / n, share = profit * pct / 100, over = !own && j.contract ? j.contract * cfg.override / 100 : 0;
-    return { revenue, lead, costs, profit, share, over, reps: n, pct, net: share + over, names: (j.repNames || []) };
+    const upCosts = (j.upsells || []).filter(u => u.status === 'won').reduce((s, u) => s + (u.cost || 0), 0), costs = (j.costs || []).reduce((s, c) => s + (c.amount || 0), 0) + upCosts, profit = revenue - lead - costs, pct = cfg.split / n, share = profit * pct / 100, over = !own && j.contract ? j.contract * cfg.override / 100 : 0;
+    return { revenue, lead, costs, upCosts, profit, share, over, reps: n, pct, net: share + over, names: (j.repNames || []) };
   }
   function screenMoney() {
     const range = periodRange(moneyPer), e = earnings(range), ytd = earnings(periodRange('year'));

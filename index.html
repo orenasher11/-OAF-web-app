@@ -11,8 +11,8 @@
 <title>My Tasks</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-<link rel="stylesheet" href="assets/base.css?v=60">
-<link rel="stylesheet" href="assets/theme.css?v=60">
+<link rel="stylesheet" href="assets/base.css?v=61">
+<link rel="stylesheet" href="assets/theme.css?v=61">
 </head>
 <body class="blueprint">
 <div class="app">
@@ -342,6 +342,7 @@
     <div id="dlTitleWrap"><label for="dl-title">What was the upsell</label><input id="dl-title" placeholder="e.g. Turf" autocomplete="off"><div class="repchips" id="dlChips"></div></div>
     <label for="dl-amt">Amount ($)</label>
     <input id="dl-amt" class="moneyin" inputmode="decimal" placeholder="0" autocomplete="off">
+    <div id="dlCostWrap"><label for="dl-cost">Expenses on this upsell ($). Lead cost is added for you</label><input id="dl-cost" class="moneyin" inputmode="decimal" placeholder="0" autocomplete="off"></div>
     <div id="dlStatusWrap"><label>Status</label><div class="repchips" id="dlStatus"></div></div>
     <div id="dlContractWrap" class="row2"><div><label for="dl-date">Sold on</label><input type="date" id="dl-date" class="dateinput"></div><div><label for="dl-seller">Sold by</label><select id="dl-seller"></select></div></div>
     <div class="actions"><button class="btn danger" id="dlDel" hidden>Delete</button><button class="btn ghost" id="dlCancel">Cancel</button><button class="btn primary" id="dlSave">Save</button></div>
@@ -428,7 +429,7 @@
 <script>
 // Safety net: shows a repair bar if the app fails to start or throws an error. Never deletes your saved tasks.
 (function () {
-  var EXPECT = '60', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
+  var EXPECT = '61', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
   function show(t) { try { msg.textContent = t; bar.hidden = false; } catch (e) {} }
   window.__oafNotify = show;
   window.addEventListener('error', function (e) { if (e.message && /ResizeObserver|Script error/.test(e.message)) return; show('Error: ' + (e.message || 'unknown') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
@@ -457,9 +458,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js"></script>
-<script src="assets/config.js?v=60"></script>
+<script src="assets/config.js?v=61"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="assets/app.js?v=60"></script>
-<script src="assets/sync.js?v=60"></script>
+<script src="assets/app.js?v=61"></script>
+<script src="assets/sync.js?v=61"></script>
 </body>
 </html>
