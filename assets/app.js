@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '59';
+  const APP_VERSION = '60';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -357,6 +357,85 @@
     paintTodoBar();
     $('#apVia').lastChild.textContent = sendVia === 'wa' ? 'Sending via WhatsApp' : 'Sending via Messages';
   }
+  // ---- job money page ("deal"): contract, upsells, expenses, split, what you keep ----
+  let dealJob = '', dealFrom = 'job', dlMode = '', dlId = '', dlStatus = 'offered';
+  const UP_IDEAS = ['Turf', 'Pavers', 'Patio', 'Lighting', 'Fence', 'Other'];
+  function openDeal(n) { dealFrom = view === 'job' ? 'job' : (view === 'deal' ? dealFrom : view); dealJob = n; view = 'deal'; render(); window.scrollTo(0, 0); }
+  function screenDeal() {
+    const n = dealJob, j = jobs[n] = jobs[n] || {}, m = jobNet(j), ups = j.upsells || [], costs = j.costs || [], sm = finSummary(j), own = !j.seller;
+    $('#h1').textContent = j.addr || n; $('#sub').textContent = 'Money for this job';
+    const sgn = v => (v < 0 ? '−' : '') + money0(Math.abs(v)), row = (l, v, cls = '', s = '') => `<div class="wrow ${cls}"><span>${l}${s ? `<small>${s}</small>` : ''}</span><b>${v}</b></div>`;
+    const upWon = ups.filter(u => u.status === 'won').reduce((s, u) => s + u.amount, 0);
+    const top = `<div class="bigcard"><div class="bl">You keep on this job</div><div class="bn">${money0(m.net)}</div><div class="bs">${j.contract || upWon ? 'Shown after lead cost, expenses and the split' : 'Add the contract below to see your pay'}</div></div>
+      <div class="scard waterfall">
+        ${own ? row('Prime contract', money0(j.contract || 0)) : row('Contract (rep sold)', money0(j.contract || 0), '', 'Your override is ' + cfg.override + '%')}
+        ${own ? row('+ Upsells won', money0(upWon), upWon ? '' : 'dim') : row('+ Upsells won', money0(upWon), upWon ? '' : 'dim')}
+        ${own || upWon ? row('− Lead cost', sgn(-m.lead), 'neg', own ? (leadPctOf(j) + '% of contract' + (upWon ? ', ' + cfg.leadUp + '% of upsells' : '')) : cfg.leadUp + '% of upsells') : ''}
+        ${row('− Expenses', sgn(-m.costs), 'neg')}
+        ${row('= Profit', sgn(m.profit), 'tot')}
+        ${row('× Your share', +m.pct.toFixed(2) + '%', '', m.reps > 1 ? cfg.split + '% split between ' + m.reps + ' people' : 'Sales side gets ' + cfg.split + '%')}
+        ${m.over ? row('+ Override', money0(m.over)) : ''}
+        ${row('You keep', money0(m.net), 'tot big')}</div>`;
+    const contract = j.contract
+      ? `<button class="dealrow" data-act="dealcontract"><div><b>${money0(j.contract)}</b><small>${j.soldOn ? 'Sold ' + fmtDate(j.soldOn) : 'No sold date'} · ${j.seller ? 'sold by ' + esc(j.seller) : 'sold by you'}</small></div><span>✎ Edit</span></button>`
+      : `<div class="bigact"><button class="jbtn primary wide" data-act="dealcontract">＋ Enter the contract amount</button><button class="jbtn wide" data-act="dealpdf">📄 Read it from the contract PDF</button><div class="hint">Or type <b>sold 54686</b> in the job chat.</div></div>`;
+    const upcards = ups.map(u => { const lead = u.amount * cfg.leadUp / 100, yours = (u.amount - lead) * cfg.split / 100 / m.reps;
+      return `<div class="upcard ${u.status}"><div class="uph"><div><b>${esc(u.title || 'Upsell')}</b><small>${u.status === 'won' ? 'Lead cost −' + money0(lead) + ' · you +' + money0(yours) + ' before expenses' : u.status === 'lost' ? 'Lost' : 'Waiting on the customer'}</small></div><span class="upamt">${money0(u.amount)}</span><button class="upedit" data-act="dealupedit" data-id="${esc(u.id)}" aria-label="Edit">✎</button></div>
+        <div class="upseg">${[['offered', 'Offered'], ['won', 'Won ✓'], ['lost', 'Lost']].map(([k, l]) => `<button class="${u.status === k ? 'on ' + k : ''}" data-act="dealupst" data-id="${esc(u.id)}" data-s="${k}">${l}</button>`).join('')}</div></div>`; }).join('');
+    const roomNote = sm.approved ? `<div class="hint">💡 Approved up to <b>${money0(sm.approved)}</b>. Room left to upsell: <b>${money0(sm.room)}</b></div>` : '';
+    const names = [...new Set([...team.map(x => x.name).filter(x => x && x !== OWNER), ...(j.repNames || [])])];
+    const reps = names.map(nm => `<button type="button" class="chip ${(j.repNames || []).includes(nm) ? 'on' : ''}" data-act="dealrep" data-r="${esc(nm)}">${esc(nm)}</button>`).join('') + '<button type="button" class="chip addsub" data-act="dealrepadd">＋ Add a rep</button>';
+    return top + `<div class="ssec">Prime contract (first sale)</div>${contract}
+      <div class="ssec">Upsells</div>${upcards || '<div class="hint">No upsells yet. Tap the button below or type <b>upsell turf 4500</b> in the job chat.</div>'}${roomNote}
+      <button class="jbtn wide" data-act="dealup">＋ Add an upsell</button>
+      <div class="ssec">Expenses</div>
+      ${costs.length ? `<div class="scard">${costs.map(c => `<div class="srow"><span class="sico">🧾</span><span class="slbl"><b>${esc(c.title || 'Expense')}</b><small>${c.date ? fmtDate(c.date) : ''}</small></span><span class="sval">−${money0(c.amount)}</span><button class="cx" data-act="dealexpdel" data-id="${esc(c.id)}" aria-label="Remove">×</button></div>`).join('')}</div>` : '<div class="hint">No expenses yet. Type <b>expense turf 28000</b> in the job chat.</div>'}
+      <button class="jbtn wide" data-act="dealexp">＋ Add an expense</button>
+      <div class="ssec">Split with other reps</div><div class="repchips">${reps}</div>
+      <div class="hint">Your ${cfg.split}% is divided between everyone you pick. Lead cost: ${leadPctOf(j)}%${j.leadPct !== undefined ? ' (set for this job)' : ''}. <button class="linkbtn" data-act="deallead">Change for this job</button></div>`;
+  }
+  function openDl(mode, id) {
+    dlMode = mode; dlId = id || ''; const j = jobs[dealJob] || {}, u = mode === 'upsell' && id ? (j.upsells || []).find(x => x.id === id) : null;
+    $('#dlHead').textContent = mode === 'contract' ? 'Prime contract' : (u ? 'Edit upsell' : 'New upsell');
+    $('#dlTitleWrap').hidden = mode !== 'upsell'; $('#dlStatusWrap').hidden = mode !== 'upsell'; $('#dlContractWrap').hidden = mode !== 'contract'; $('#dlDel').hidden = !(mode === 'upsell' && u);
+    $('#dl-title').value = u ? u.title || '' : ''; $('#dl-amt').value = fmtAmt(mode === 'contract' ? j.contract : (u ? u.amount : ''));
+    dlStatus = u ? u.status : 'offered'; paintDlStatus();
+    $('#dlChips').innerHTML = UP_IDEAS.map(t => `<button type="button" class="chip" data-t="${t}">${t}</button>`).join('');
+    $('#dl-date').value = j.soldOn || todayISO();
+    $('#dl-seller').innerHTML = '<option value="">Me (you sold it)</option>' + team.map(x => `<option ${j.seller === x.name ? 'selected' : ''}>${esc(x.name)}</option>`).join('') + (j.seller && !team.some(x => x.name === j.seller) ? `<option selected>${esc(j.seller)}</option>` : '');
+    $('#dlBg').classList.add('open'); setTimeout(() => $(mode === 'upsell' && !u ? '#dl-title' : '#dl-amt').focus(), 250);
+  }
+  const paintDlStatus = () => { $('#dlStatus').innerHTML = [['offered', 'Offered'], ['won', 'Won ✓'], ['lost', 'Lost']].map(([k, l]) => `<button type="button" class="chip ${dlStatus === k ? 'on' : ''}" data-s="${k}">${l}</button>`).join(''); };
+  $('#dlStatus').onclick = e => { const c = e.target.closest('[data-s]'); if (c) { dlStatus = c.dataset.s; paintDlStatus(); } };
+  $('#dlChips').onclick = e => { const c = e.target.closest('[data-t]'); if (c) { $('#dl-title').value = c.dataset.t; $('#dl-amt').focus(); } };
+  $('#dlCancel').onclick = () => $('#dlBg').classList.remove('open');
+  $('#dlBg').onclick = e => { if (e.target.id === 'dlBg') $('#dlBg').classList.remove('open'); };
+  $('#dlSave').onclick = () => {
+    const j = jobs[dealJob] = jobs[dealJob] || {}, v = amt($('#dl-amt').value);
+    if (dlMode === 'contract') { j.contract = v; j.soldOn = $('#dl-date').value || j.soldOn || todayISO(); j.seller = $('#dl-seller').value; if (!v) delete j.soldOn; }
+    else {
+      if (!v) { toast('Enter the amount'); return; }
+      const t = $('#dl-title').value.trim() || 'Upsell', ups = j.upsells = j.upsells || [], u = dlId && ups.find(x => x.id === dlId);
+      if (u) { u.title = t; u.amount = v; if (dlStatus === 'won' && u.status !== 'won') u.wonAt = todayISO(); u.status = dlStatus; }
+      else ups.push({ id: uid(), title: t, amount: v, status: dlStatus, at: todayISO(), wonAt: dlStatus === 'won' ? todayISO() : '' });
+    }
+    saveJobs(); $('#dlBg').classList.remove('open'); render(); toast('Saved');
+  };
+  $('#dlDel').onclick = () => { const j = jobs[dealJob]; if (!j) return; const gone = (j.upsells || []).find(x => x.id === dlId); j.upsells = (j.upsells || []).filter(x => x.id !== dlId); saveJobs(); $('#dlBg').classList.remove('open'); render(); toast('Upsell removed', () => { j.upsells = [...(j.upsells || []), gone]; saveJobs(); render(); }); };
+  $('#dlPdf').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) maybeContract(dealJob, { name: f.name, mime: f.type, blob: f }, true); };
+  function dealAct(act, el) {
+    const j = jobs[dealJob] = jobs[dealJob] || {};
+    if (act === 'dealcontract') return openDl('contract');
+    if (act === 'dealpdf') return $('#dlPdf').click();
+    if (act === 'dealup') return openDl('upsell');
+    if (act === 'dealupedit') return openDl('upsell', el.dataset.id);
+    if (act === 'dealupst') { const u = (j.upsells || []).find(x => x.id === el.dataset.id); if (!u) return; if (el.dataset.s === 'won' && u.status !== 'won') u.wonAt = todayISO(); u.status = el.dataset.s; saveJobs(); return render(); }
+    if (act === 'dealexp') return openExpense(dealJob);
+    if (act === 'dealexpdel') { const c = (j.costs || []).find(x => x.id === el.dataset.id); j.costs = (j.costs || []).filter(x => x.id !== el.dataset.id); saveJobs(); render(); return toast('Expense removed', () => { j.costs = [...(j.costs || []), c]; saveJobs(); render(); }); }
+    if (act === 'dealrep') { const nm = el.dataset.r, cur = j.repNames || []; j.repNames = cur.includes(nm) ? cur.filter(x => x !== nm) : [...cur, nm]; if (!j.repNames.length) delete j.repNames; saveJobs(); return render(); }
+    if (act === 'dealrepadd') { const nm = (window.prompt('Rep name') || '').trim(); if (nm) { j.repNames = [...new Set([...(j.repNames || []), nm])]; saveJobs(); render(); } return; }
+    if (act === 'deallead') { const v = window.prompt('Lead cost % for this job (empty = default ' + cfg.leadFirst + '%)', j.leadPct !== undefined ? j.leadPct : ''); if (v === null) return; if (v.trim() === '') delete j.leadPct; else j.leadPct = parseFloat(v) || 0; saveJobs(); render(); }
+  }
   // ---- quick expense ----
   let exJob = '', skipExp = false;
   function openExpense(n, pre = {}) {
@@ -396,23 +475,26 @@
     if (keyed.length) { const k = keyed.sort((a, b) => b.v - a.v)[0]; return { amount: k.v, label: k.label.trim() }; }
     return all.length ? { amount: Math.max(...all), label: 'largest amount' } : null;
   }
-  async function maybeContract(job, f) {
-    const isPdf = /pdf/i.test(f.mime || '') || /\.pdf$/i.test(f.name || ''), named = /contract|agreement|proposal|estimate|signed/i.test(f.name || '');
-    if (!isPdf) { if (named) openPick('Is this the contract?', [{ label: '💵 Yes, enter the contract amount', fn: () => openMoney(job) }, { label: 'No', fn: () => {} }]); return; }
-    let lines; try { lines = await pdfText(f.blob); } catch { if (named) openPick('Is this the contract?', [{ label: '💵 Yes, enter the contract amount', fn: () => openMoney(job) }, { label: 'No', fn: () => {} }]); return; }
+  async function maybeContract(job, f, force) {
+    const isPdf = /pdf/i.test(f.mime || '') || /\.pdf$/i.test(f.name || ''), named = force || /contract|agreement|proposal|estimate|signed/i.test(f.name || '');
+    if (!isPdf) { if (named) openPick('Is this the contract?', [{ label: '💵 Yes, enter the contract amount', fn: () => { dealJob = job; openDl('contract'); } }, { label: 'No', fn: () => {} }]); return; }
+    let lines; try { lines = await pdfText(f.blob); } catch { if (named) openPick('Is this the contract?', [{ label: '💵 Yes, enter the contract amount', fn: () => { dealJob = job; openDl('contract'); } }, { label: 'No', fn: () => {} }]); return; }
     const text = lines.join(' ');
     if (!named && !/contract|agreement|proposal|estimate/i.test(text)) return;
     const r = findContractAmount(lines);
-    if (!r) { if (named) openPick('Contract file saved', [{ label: '💵 Enter the contract amount', fn: () => openMoney(job) }, { label: 'Not a contract', fn: () => {} }]); return; }
+    if (!r) { if (named) openPick('Contract file saved', [{ label: '💵 Enter the contract amount', fn: () => { dealJob = job; openDl('contract'); } }, { label: 'Not a contract', fn: () => {} }]); return; }
     const j = jobs[job] || {};
     openPick('Contract found: ' + money0(r.amount) + (j.contract && j.contract !== r.amount ? ' (now ' + money0(j.contract) + ')' : ''), [
       { label: '✅ Record ' + money0(r.amount) + ' as the contract', fn: () => { const jj = jobs[job] = jobs[job] || {}; jj.contract = r.amount; if (!jj.soldOn) jj.soldOn = todayISO(); saveJobs(); logMsg(job, 'note', '📄 Contract recorded: ' + money0(r.amount) + '. Estimated pay so far: ' + money0(jobNet(jj).net) + ' (after ' + money0(jobNet(jj).lead) + ' lead cost and ' + money0(jobNet(jj).costs) + ' expenses, your share ' + +jobNet(jj).pct.toFixed(2) + '%).'); render(); toast('Contract recorded'); } },
-      { label: '✏️ Use a different amount', fn: () => openMoney(job) },
+      { label: '✏️ Use a different amount', fn: () => { dealJob = job; openDl('contract'); } },
       { label: '✖ Not a contract', fn: () => {} }]);
   }
   function sendChat() {
     const text = $('#chatIn').value.trim();
     const mx = !pending.length && !skipExp && text.match(/^(?:expense|exp|cost)\s+(.+?)\s+\$?([\d,]+(?:\.\d{1,2})?)\s*$/i);
+    const mu = !pending.length && !skipExp && text.match(/^(?:upsell|up)\s+(.+?)\s+\$?([\d,]+(?:\.\d{1,2})?)\s*$/i), ms = !pending.length && !skipExp && text.match(/^(?:sold|contract)\s+\$?([\d,]+(?:\.\d{1,2})?)\s*$/i);
+    if (mu) { const t1 = mu[1].replace(/^./, c => c.toUpperCase()), v1 = amt(mu[2]), add = st => { const j = jobs[curJob] = jobs[curJob] || {}; j.upsells = [...(j.upsells || []), { id: uid(), title: t1, amount: v1, status: st, at: todayISO(), wonAt: st === 'won' ? todayISO() : '' }]; saveJobs(); logMsg(curJob, 'note', (st === 'won' ? '🎉 Upsell won: ' : '⬆️ Upsell offered: ') + t1 + ' ' + money0(v1) + '.'); $('#chatIn').value = ''; autoGrow(); render(); toast('Upsell saved'); }; return openPick('Upsell: ' + t1 + ' ' + money0(v1), [{ label: '⬆️ Offered, waiting on the customer', fn: () => add('offered') }, { label: '🎉 Won', fn: () => add('won') }, { label: '💬 Send as a message instead', fn: () => { skipExp = true; sendChat(); skipExp = false; } }]); }
+    if (ms) { const v2 = amt(ms[1]); return openPick('Record contract ' + money0(v2) + '?', [{ label: '✅ Record as the prime contract', fn: () => { const j = jobs[curJob] = jobs[curJob] || {}; j.contract = v2; if (!j.soldOn) j.soldOn = todayISO(); saveJobs(); logMsg(curJob, 'note', '📄 Contract recorded: ' + money0(v2) + '. Estimated pay so far: ' + money0(jobNet(j).net) + '.'); $('#chatIn').value = ''; autoGrow(); render(); toast('Contract recorded'); } }, { label: '💬 Send as a message instead', fn: () => { skipExp = true; sendChat(); skipExp = false; } }]); }
     if (mx) { const t0 = mx[1].replace(/^./, c => c.toUpperCase()), v0 = amt(mx[2]); return openPick('Add expense: ' + t0 + ' ' + money0(v0) + '?', [{ label: '✅ Add as an expense', fn: () => { $('#chatIn').value = ''; autoGrow(); exJob = curJob; $('#ex-title').value = t0; $('#ex-amt').value = fmtAmt(v0); saveExpense(false); } }, { label: '💬 Send as a message instead', fn: () => { skipExp = true; sendChat(); skipExp = false; } }]); }
     if (!text && !pending.length) { toast('Tap the 🎤 on your keyboard to dictate'); $('#chatIn').focus(); return; }
     if (pending.length) {
@@ -778,7 +860,8 @@
       <button type="button" class="s-del" aria-label="Remove">×</button>`;
     $('#costRows').appendChild(d);
   }
-  function openMoney(n) {
+  function openMoney(n) { openDeal(n); }
+  function openMoneyLegacy(n) {
     moneyJob = n; const j = jobs[n] || {};
     $('#mnTitle').textContent = j.addr || n; $('#mn-contract').value = fmtAmt(j.contract); $('#mn-sold').value = j.soldOn || '';
     $('#mn-seller').innerHTML = '<option value="">Me (you sold it)</option>' + team.map(x => `<option ${j.seller === x.name ? 'selected' : ''}>${esc(x.name)}</option>`).join('') + (j.seller && !team.some(x => x.name === j.seller) ? `<option selected>${esc(j.seller)}</option>` : '');
@@ -1459,6 +1542,8 @@
         <button id="clearDone">🧹 Clear completed</button>
         <input type="file" id="importFile" accept="application/json" hidden></div>
         <div class="hint">Your data is stored on this phone${window.OAFsync && window.OAFsync.label() === 'Synced' ? ' and in the cloud' : ' only. Back up now and then'}. Photos, videos and files are not in the backup yet.<br>Version ${APP_VERSION}</div>`;
+    } else if (view === 'deal') {
+      html += screenDeal();
     } else if (view === 'map') {
       $('#h1').textContent = 'Job map'; $('#sub').textContent = 'Every job and lead in Southern California';
       html += mapHTML();
@@ -1541,19 +1626,19 @@
       html = `<button class="jbtn wide oldbtn" data-act="oldjob">📥 Add a job that's already in progress</button>` + html;
     }
     $('#stats').innerHTML = stats; $('#stats').hidden = !stats;
-    const SUBS = ['visits', 'calendar', 'upcoming', 'reports', 'leads'];
+    const SUBS = ['visits', 'calendar', 'deal', 'upcoming', 'reports', 'leads'];
     $('#jobbar').hidden = !['today', 'projects'].includes(view);
     $('#back').hidden = !(view === 'job' || view === 'evening' || SUBS.includes(view) || (view === 'subs' && pickJob));
-    $('#back').textContent = view === 'evening' ? '‹ Today' : view === 'job' ? '‹ Jobs' : view === 'subs' && pickJob ? '‹ Job' : '‹ More';
+    $('#back').textContent = view === 'deal' ? '‹ Back' : view === 'evening' ? '‹ Today' : view === 'job' ? '‹ Jobs' : view === 'subs' && pickJob ? '‹ Job' : '‹ More';
     const lateN = visitList().filter(v => v.state === 'late').length;
     $('#mbadge').textContent = lateN || ''; $('#mbadge').hidden = !lateN;
     const ldN = leadsDue().length; $('#lbadge').textContent = ldN || ''; $('#lbadge').hidden = !ldN;
     const inPlay = [...new Set(open.map(t => t.project).filter(Boolean))].reduce((a, n) => a + (jobs[n]?.upsell || 0), 0);
     $('#pot').innerHTML = inPlay ? `Upsell potential in play <b>${money(inPlay)}</b>` : 'Add upsell potential to each job';
     $('#main').innerHTML = html;
-    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === ({ job: 'projects', visits: 'more', calendar: 'more', upcoming: 'more', reports: 'more', leads: 'more', subs: 'subs', evening: 'today' }[view] || view)));
+    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === ({ job: 'projects', visits: 'more', calendar: 'more', deal: dealFrom === 'money' ? 'money' : 'projects', upcoming: 'more', reports: 'more', leads: 'more', subs: 'subs', evening: 'today' }[view] || view)));
     const inChat = view === 'job' && jobTab === 'chat';
-    $('#composer').hidden = !inChat; $('#chatHead').hidden = !inChat; $('#fab').hidden = view === 'job' || view === 'map';
+    $('#composer').hidden = !inChat; $('#chatHead').hidden = !inChat; $('#fab').hidden = view === 'job' || view === 'map' || view === 'deal';
     document.body.classList.toggle('injob', view === 'job');
     document.body.classList.toggle('inchat', inChat);
     document.documentElement.classList.toggle('inchat', inChat);
@@ -1940,7 +2025,7 @@
 
   // ---- events ----
   $('#fab').onclick = () => openSheet(null, view === 'job' ? curJob : '');
-  $('#back').onclick = () => { if (view === 'subs' && pickJob) { const n = pickJob; pickJob = ''; curJob = n; jobTab = 'info'; tabHist = ['chat']; view = 'job'; render(); window.scrollTo(0, 0); return; } view = view === 'evening' ? 'today' : view === 'job' ? 'projects' : 'more'; render(); window.scrollTo(0, 0); };
+  $('#back').onclick = () => { if (view === 'deal') { if (dealFrom === 'job') { curJob = dealJob; jobTab = 'info'; view = 'job'; } else view = dealFrom || 'money'; render(); window.scrollTo(0, 0); return; } if (view === 'subs' && pickJob) { const n = pickJob; pickJob = ''; curJob = n; jobTab = 'info'; tabHist = ['chat']; view = 'job'; render(); window.scrollTo(0, 0); return; } view = view === 'evening' ? 'today' : view === 'job' ? 'projects' : 'more'; render(); window.scrollTo(0, 0); };
   $('#cancelBtn').onclick = closeSheet;
   $('#saveBtn').onclick = saveSheet;
   $('#bg').onclick = e => { if (e.target.id === 'bg') closeSheet(); };
@@ -1990,6 +2075,7 @@
       if (act === 'collapse') { const p = el.dataset.p; collapsed.has(p) ? collapsed.delete(p) : collapsed.add(p); return render(); }
       if (act === 'addto') return openSheet(null, el.dataset.p);
       if (act.startsWith('map')) return void mapAct(act, el);
+      if (act.startsWith('deal')) return void dealAct(act, el);
       if (act === 'openjob') { curJob = el.dataset.p; jobTab = 'chat'; tabHist = []; chatSearch = false; chatLimit = 300; view = 'job'; render(); return; }
       if (act === 'go') { view = el.dataset.v; filter = 'all'; render(); window.scrollTo(0, 0); return; }
       if (act === 'addkick') return openPick('Add the kickoff checklist', [{ label: 'Start today', fn: () => addKickoff(curJob, 0) }, { label: 'Start tomorrow at 8:00 AM', fn: () => addKickoff(curJob, 1) }, { label: 'Start in 2 days', fn: () => addKickoff(curJob, 2) }]);
