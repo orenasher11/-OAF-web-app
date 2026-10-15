@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '76';
+  const APP_VERSION = '77';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -1528,7 +1528,7 @@
     const card = r => { const g = getStages(r.j), i = stageIdx(r.j), nr = Math.max(1, jobReps(r.j).length), mine = jobReps(r.j).includes(nm) ? (r.j.contract || 0) * cfg.override / 100 / nr : 0, quiet = !r.j.archived && (r.d === null || r.d >= 7);
       return `<button class="repjob" data-act="openjob" data-p="${esc(r.n)}"><span class="rjtop"><b>${esc(r.j.addr || r.n)}</b><span class="rjmoney">${r.j.contract ? money0(r.j.contract) : 'No contract'}</span></span>
         <span class="rjmid"><span class="stg" style="--c:${i >= 0 ? SCOL[i] : '#94a3b8'}">${g.length ? esc(g.length <= 2 ? g.join(' + ') : g[0] + ' + ' + (g.length - 1) + ' more') : 'No stage yet'}</span><span class="${quiet ? 'red' : 'muted'}">${agoTxt(r.d)}</span></span>
-        <span class="rjmid"><span class="muted">${esc(r.n)}${fileReps(r.j).length > 1 ? ' · with ' + esc(fileReps(r.j).filter(x => x !== nm).join(', ')) : ''}</span><span class="rjmine">${r.j.contract && mine ? 'You get ' + money0(mine) + (nr > 1 ? ' (1% ÷ ' + nr + ')' : '') : ''}</span></span></button>`; };
+        <span class="rjmid"><span class="muted">${esc(r.n)}${fileReps(r.j).length > 1 ? ' · with ' + esc(fileReps(r.j).filter(x => x !== nm).join(', ')) : ''}</span><span class="rjmine">${r.j.contract && mine ? 'You get ' + money0(mine) + (nr > 1 ? ' (1% ÷ ' + nr + ')' : '') : (r.j.contract ? (jobReps(r.j).length && !jobReps(r.j).includes(nm) ? 'On an upsell only · no 1%' : !r.j.seller ? 'On your file · no 1%' : '') : '')}</span></span></button>`; };
     const ph = (team.find(x => x.name === nm) || {}).phone;
     return `<div class="seg">${seg('month', 'This month')}${seg('last', 'Last month')}${seg('year', 'This year')}</div>
       <div class="bigcard"><div class="bl">You earn from ${esc(nm)} ${per}</div><div class="bn">${money0(s.mine)}</div><div class="bs">${s.deals} ${s.deals === 1 ? 'job' : 'jobs'} sold · ${money0(s.sold)} in contracts<br>All time: ${money0(s.life)} · ${s.open} open ${s.open === 1 ? 'job' : 'jobs'}${s.quiet ? ' · ' + s.quiet + ' quiet' : ''}</div></div>
