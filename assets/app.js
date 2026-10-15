@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '65';
+  const APP_VERSION = '66';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -692,7 +692,7 @@
     return out;
   }
   // ---- money: commissions, overrides, upsells ----
-  const money0 = n => '$' + Math.round(n || 0).toLocaleString('en-US');
+  const money0 = n => { const v = Math.round(n || 0); return (v < 0 ? '−' : '') + '$' + Math.abs(v).toLocaleString('en-US'); };
   function periodRange(p) {
     const d = new Date(), y = d.getFullYear(), m = d.getMonth();
     if (p === 'month') return [iso(new Date(y, m, 1)), iso(new Date(y, m + 1, 0))];
