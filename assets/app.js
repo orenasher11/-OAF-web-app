@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '69';
+  const APP_VERSION = '70';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -19,6 +19,7 @@
   ];
   const catOf = id => CATS.find(c => c.id === id);
 
+  let asRep = '', swapping = false;
   let tasks = [], view = 'today', filter = 'all', editingId = null, curJob = '', jobTab = 'chat';
   let formCat = '', formStar = false, lastUndo = null, toastTimer = null;
   const collapsed = new Set();
@@ -31,7 +32,7 @@
   try { tasks = JSON.parse(localStorage.getItem(KEY)) || []; } catch { tasks = []; }
   if (!OWNER && tasks.length) OWNER = 'Oren';   // existing installs keep the original name
   const changed = () => { try { window.OAF && window.OAF.onChange && window.OAF.onChange(); } catch {} };
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(tasks)); } catch {} changed(); };
+  const save = () => { if (swapping) return; try { localStorage.setItem(KEY, JSON.stringify(tasks)); } catch {} changed(); };
   const FIN_DEFAULT = ['Homerun', 'Aqua', 'Renew', 'Figure', 'HFS', 'Acorn', 'Jason', 'Limor', 'Cash'];
   const FIN_STATUS = ['Not started', 'Applied', 'Approved', 'Docs signed', 'Funded', 'Declined'];
   const JSTAGES = ['PRE NTP', 'POST NTP', 'IN PROGRESS', 'PRE UPSELL', 'POST UPSELL', 'BEFORE COMPLETION', 'COMPLETED', 'MONEY RECEIVED'];
@@ -63,12 +64,12 @@
   let subsDir = [];
   try { subsDir = JSON.parse(localStorage.getItem('oaf-subsdir-v1')) || []; } catch {}
   const saveSubsDir = () => { try { localStorage.setItem('oaf-subsdir-v1', JSON.stringify(subsDir)); } catch {} changed(); };
-  const saveLeads = () => { try { localStorage.setItem('oaf-leads-v1', JSON.stringify(leads)); } catch {} changed(); };
+  const saveLeads = () => { if (swapping) return; try { localStorage.setItem('oaf-leads-v1', JSON.stringify(leads)); } catch {} changed(); };
   const saveReports = () => { try { localStorage.setItem('oaf-reports-v1', JSON.stringify(reports)); } catch {} changed(); };
   const JOBS_KEY = 'oaf-jobs-v1';        // per-project info: upsell potential, sub
   let jobs = {};
   try { jobs = JSON.parse(localStorage.getItem(JOBS_KEY)) || {}; } catch { jobs = {}; }
-  const saveJobs = () => { try { localStorage.setItem(JOBS_KEY, JSON.stringify(jobs)); } catch {} changed(); };
+  const saveJobs = () => { if (swapping) return; try { localStorage.setItem(JOBS_KEY, JSON.stringify(jobs)); } catch {} changed(); };
   const money = n => n >= 1000 ? '$' + (n / 1000).toFixed(n % 1000 ? 1 : 0).replace(/\.0$/, '') + 'k' : '$' + n;
   // a job can have several subs; older jobs only stored one (sub + phone)
   const getSubs = j => (j && j.subs) ? j.subs : (j && j.sub ? [{ name: j.sub, phone: j.phone || '' }] : []);
@@ -368,7 +369,7 @@
     const n = dealJob, j = jobs[n] = jobs[n] || {}, m = jobNet(j), sm = finSummary(j);
     $('#h1').textContent = j.addr || n; $('#sub').textContent = 'Money for this job';
     const cards = m.sales.map(s => `<button class="upcard sale ${s.kind}" data-act="dealsale" data-id="${esc(s.key)}"><div class="uph"><div><b>${esc(s.title)}${s.kind === 'first' ? ' (first sale)' : ''}</b><small>${money0(s.amount)} − lead ${money0(s.lead)} (${+s.leadPct.toFixed(2)}%) − expenses ${money0(s.cost)} = ${sgn(s.profit)} profit</small><small>${s.k > 1 ? 'With ' + esc(s.reps.join(', ')) + ' · each gets ' + +s.pct.toFixed(2) + '%' : 'Just you · ' + +s.pct.toFixed(2) + '%'}</small></div><div class="upyou"><small>You get</small><b>${money0(s.share)}</b></div></div></button>`).join('');
-    const repSold = j.seller && j.contract ? `<button class="upcard sale first" data-act="dealsale" data-id="first"><div class="uph"><div><b>Prime contract · sold by ${esc(j.seller)}</b><small>${money0(j.contract)} · your ${cfg.override}% override</small></div><div class="upyou"><small>You get</small><b>${money0(m.over)}</b></div></div></button>` : '';
+    const repSold = !asRep && j.seller && j.contract ? `<button class="upcard sale first" data-act="dealsale" data-id="first"><div class="uph"><div><b>Prime contract · sold by ${esc(j.seller)}</b><small>${money0(j.contract)} · your ${cfg.override}% override</small></div><div class="upyou"><small>You get</small><b>${money0(m.over)}</b></div></div></button>` : '';
     const empty = !j.contract ? `<div class="bigact"><button class="jbtn primary wide" data-act="dealcontract">＋ Add the first sale</button><button class="jbtn wide" data-act="dealpdf">📄 Read it from the contract PDF</button><div class="hint">Or type <b>sold 54686</b> in the job chat.</div></div>` : '';
     const room = sm.approved ? `<div class="hint">💡 Approved up to <b>${money0(sm.approved)}</b>. Room left to upsell: <b>${money0(sm.room)}</b></div>` : '';
     return `<div class="bigcard"><div class="bl">You keep on this job</div><div class="bn">${money0(m.net)}</div><div class="bs">${m.sales.length + (repSold ? 1 : 0)} ${m.sales.length + (repSold ? 1 : 0) === 1 ? 'sale' : 'sales'} added together · profit ${sgn(m.profit)}</div></div>
@@ -403,7 +404,7 @@
     dlReps = first ? (j.repNames || []).slice() : (u ? (u.repNames || []).slice() : []); paintDlReps();
     $('#dlChips').innerHTML = UP_IDEAS.map(t => `<button type="button" class="chip" data-t="${t}">${t}</button>`).join('');
     $('#dl-date').value = j.soldOn || todayISO();
-    $('#dl-seller').innerHTML = '<option value="">Me (you sold it)</option>' + team.map(x => `<option ${j.seller === x.name ? 'selected' : ''}>${esc(x.name)}</option>`).join('') + (j.seller && !team.some(x => x.name === j.seller) ? `<option selected>${esc(j.seller)}</option>` : '');
+    $('#dl-seller').innerHTML = (asRep ? `<option value="${esc(asRep)}" selected>${esc(asRep)} (sold it)</option>` : '<option value="">Me (you sold it)</option>') + team.filter(x => x.name !== asRep).map(x => `<option ${j.seller === x.name ? 'selected' : ''}>${esc(x.name)}</option>`).join('') + (j.seller && !team.some(x => x.name === j.seller) ? `<option selected>${esc(j.seller)}</option>` : '');
     dlPreview(); $('#dlBg').classList.add('open'); setTimeout(() => $(!first && !u ? '#dl-title' : '#dl-amt').focus(), 250);
   }
   $('#dlChips').onclick = e => { const c = e.target.closest('[data-t]'); if (c) { $('#dl-title').value = c.dataset.t; $('#dl-amt').focus(); } };
@@ -717,7 +718,7 @@
   }
   function salesOf(j) {
     const out = [];
-    if (j.contract && !j.seller) out.push(saleCalc({ key: 'first', kind: 'first', title: 'Prime contract', amount: j.contract, leadPct: leadPctOf(j), costs: j.costs || [], reps: j.repNames || [], date: j.soldOn || '' }));
+    if (j.contract && (asRep ? j.seller === asRep : !j.seller)) out.push(saleCalc({ key: 'first', kind: 'first', title: 'Prime contract', amount: j.contract, leadPct: leadPctOf(j), costs: j.costs || [], reps: j.repNames || [], date: j.soldOn || '' }));
     (j.upsells || []).forEach(u => out.push(saleCalc({ key: u.id, kind: 'upsell', title: u.title || 'Upsell', amount: u.amount || 0, leadPct: u.leadPct !== undefined && u.leadPct !== '' && u.leadPct !== null ? +u.leadPct : cfg.leadUp, costs: upCostsOf(u), reps: u.repNames || [], date: u.wonAt || u.at || '' })));
     return out;
   }
@@ -725,7 +726,7 @@
     const r = { deals: 0, contracts: 0, revenue: 0, upWon: 0, upPlay: 0, upOff: 0, leadFirst: 0, leadUp: 0, costs: 0, over: 0, share: 0 };
     Object.values(jobs).forEach(j => {
       if (!j) return;
-      if (j.contract && inR(j.soldOn, range)) { r.deals++; r.contracts += j.contract; if (j.seller) r.over += j.contract * cfg.override / 100; }
+      if (j.contract && inR(j.soldOn, range)) { r.deals++; r.contracts += j.contract; if (!asRep && j.seller) r.over += j.contract * cfg.override / 100; }
       salesOf(j).forEach(s => {
         if (!inR(s.date || j.soldOn, range)) return;
         r.revenue += s.amount; r.costs += s.cost; r.share += s.share;
@@ -736,7 +737,7 @@
   }
   function jobNet(j) {
     const sales = salesOf(j), sum = f => sales.reduce((t, s) => t + f(s), 0), first = sales.find(s => s.kind === 'first');
-    const over = j.seller && j.contract ? j.contract * cfg.override / 100 : 0, revenue = sum(s => s.amount), lead = sum(s => s.lead), costs = sum(s => s.cost), share = sum(s => s.share);
+    const over = !asRep && j.seller && j.contract ? j.contract * cfg.override / 100 : 0, revenue = sum(s => s.amount), lead = sum(s => s.lead), costs = sum(s => s.cost), share = sum(s => s.share);
     return { sales, revenue, lead, costs, profit: revenue - lead - costs, share, over, reps: first ? first.k : repsOf(j), pct: first ? first.pct : cfg.split / repsOf(j), net: share + over, names: j.repNames || [] };
   }
   function screenMoney() {
@@ -1315,8 +1316,8 @@
   const milesBetween = (a, b) => { const R = 3958.8, r = x => x * Math.PI / 180, dLa = r(b.lat - a.lat), dLo = r(b.lng - a.lng), h = Math.sin(dLa / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLo / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
   function mapItems() {
     const out = [];
-    Object.keys(jobs).filter(n => jobs[n] && !jobs[n].archived && !jobs[n].demo && jobs[n].addr).forEach(n => { const j = jobs[n], i = stageIdx(j); out.push({ k: 'job:' + n, kind: 'job', key: n, title: j.addr, sub: n, addr: j.addr, rec: j, save: saveJobs, color: i >= 0 ? SCOL[i] : '#94a3b8' }); });
-    leads.filter(l => isOpenLead(l) && l.addr).forEach(l => out.push({ k: 'lead:' + l.id, kind: 'lead', key: l.id, title: l.name || l.addr, sub: l.addr, addr: l.addr, rec: l, save: saveLeads, color: '#f59e0b' }));
+    Object.keys(jobs).filter(n => jobs[n] && !jobs[n].archived && !jobs[n].demo && jobs[n].addr && (!asRep || jobs[n].seller === asRep)).forEach(n => { const j = jobs[n], i = stageIdx(j); out.push({ k: 'job:' + n, kind: 'job', key: n, title: j.addr, sub: n, addr: j.addr, rec: j, save: saveJobs, color: i >= 0 ? SCOL[i] : '#94a3b8' }); });
+    leads.filter(l => isOpenLead(l) && l.addr && (!asRep || l.rep === asRep)).forEach(l => out.push({ k: 'lead:' + l.id, kind: 'lead', key: l.id, title: l.name || l.addr, sub: l.addr, addr: l.addr, rec: l, save: saveLeads, color: '#f59e0b' }));
     return out;
   }
   const mapPlaced = it => it.rec.lat != null && it.rec.geoAddr === it.addr;
@@ -1492,7 +1493,7 @@
       <div class="reptable"><div class="rth"><span>Rep</span><span>Open</span><span>Sold</span><span>Your ${cfg.override}%</span></div>
       ${rows.map(r => `<button class="rtr" data-act="repopen" data-r="${esc(r.nm)}"><span class="rn"><b>${esc(r.nm)}</b><small>${r.s.quiet ? '<em class="red">' + r.s.quiet + ' quiet 7+ days</em>' : r.s.open ? 'All active' : 'No open jobs'}</small></span><span>${r.s.open}</span><span>${money0(r.s.sold)}</span><span class="mine">${money0(r.s.mine)}</span></button>`).join('')}
       <div class="rtr tot"><span class="rn"><b>Total</b></span><span>${tot.open}</span><span>${money0(tot.sold)}</span><span class="mine">${money0(tot.mine)}</span></div></div>
-      <div class="hint">Tap a rep to see their jobs, where each one is, and where they are on the map. A job counts for a rep when you pick them in <b>Sold by</b>.</div>`;
+      <div class="hint">Tap a rep to open their app: their jobs, tasks, money and map, the same screens you use. A job counts for a rep when you pick them in <b>Sold by</b>.</div>`;
   }
   function screenRep() {
     const nm = repName, range = periodRange(moneyPer), s = repStats(nm, range), per = { month: 'this month', last: 'last month', year: 'this year' }[moneyPer];
@@ -1536,7 +1537,16 @@
   }
   function destroyRepMap() { if (repMap) { try { repMap.remove(); } catch {} repMap = null; } }
 
+  // "View as a rep": every screen shows only that rep's jobs, tasks and leads, with their pay worked out the same way as yours.
+  function paintAsBar() { const b = $('#asbar'); if (!b) return; b.hidden = !asRep; if (asRep) $('#asName').textContent = asRep; }
   function render() {
+    if (!asRep) { renderCore(); paintAsBar(); return; }
+    const J = jobs, T = tasks, L = leads, jr = Object.fromEntries(Object.entries(J).filter(([, j]) => j && j.seller === asRep));
+    jobs = jr; tasks = T.filter(t => t.project && jr[t.project]); leads = L.filter(l => l.rep === asRep); swapping = true;
+    try { renderCore(); } finally { jobs = J; tasks = T; leads = L; swapping = false; }
+    paintAsBar();
+  }
+  function renderCore() {
     const t0 = todayISO();
     const open = tasks.filter(t => !t.done).sort(cmp);
     const open_ = n => open.filter(t => t.project === n);
@@ -1729,7 +1739,7 @@
     }
     $('#stats').innerHTML = stats; $('#stats').hidden = !stats;
     const SUBS = ['visits', 'calendar', 'deal', 'upcoming', 'reports', 'rep', 'leads'];
-    $('#jobbar').hidden = !['today', 'projects'].includes(view);
+    $('#jobbar').hidden = !!asRep || !['today', 'projects'].includes(view);
     $('#back').hidden = !(view === 'job' || view === 'evening' || SUBS.includes(view) || (view === 'subs' && pickJob));
     $('#back').textContent = view === 'rep' ? '‹ My reps' : view === 'deal' ? '‹ Back' : view === 'evening' ? '‹ Today' : view === 'job' ? '‹ Jobs' : view === 'subs' && pickJob ? '‹ Job' : '‹ More';
     const lateN = visitList().filter(v => v.state === 'late').length;
@@ -1740,7 +1750,7 @@
     $('#main').innerHTML = html;
     document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === ({ job: 'projects', visits: 'more', calendar: 'more', deal: dealFrom === 'money' ? 'money' : 'projects', upcoming: 'more', reports: 'more', leads: 'more', subs: 'subs', evening: 'today' }[view] || view)));
     const inChat = view === 'job' && jobTab === 'chat';
-    $('#composer').hidden = !inChat; $('#chatHead').hidden = !inChat; $('#fab').hidden = view === 'job' || view === 'map' || view === 'deal' || view === 'rep' || view === 'reports';
+    $('#composer').hidden = !inChat; $('#chatHead').hidden = !inChat; $('#fab').hidden = !!asRep || view === 'job' || view === 'map' || view === 'deal' || view === 'rep' || view === 'reports';
     document.body.classList.toggle('injob', view === 'job');
     document.body.classList.toggle('inchat', inChat);
     document.documentElement.classList.toggle('inchat', inChat);
@@ -2128,6 +2138,8 @@
 
   // ---- events ----
   $('#fab').onclick = () => openSheet(null, view === 'job' ? curJob : '');
+  $('#asExit').onclick = () => { asRep = ''; view = 'reports'; render(); window.scrollTo(0, 0); };
+  $('#asSum').onclick = () => { repName = asRep; asRep = ''; view = 'rep'; render(); window.scrollTo(0, 0); };
   $('#back').onclick = () => { if (view === 'rep') { view = 'reports'; render(); window.scrollTo(0, 0); return; } if (view === 'deal') { if (dealFrom === 'job') { curJob = dealJob; jobTab = 'info'; view = 'job'; } else view = dealFrom || 'money'; render(); window.scrollTo(0, 0); return; } if (view === 'subs' && pickJob) { const n = pickJob; pickJob = ''; curJob = n; jobTab = 'info'; tabHist = ['chat']; view = 'job'; render(); window.scrollTo(0, 0); return; } view = view === 'evening' ? 'today' : view === 'job' ? 'projects' : 'more'; render(); window.scrollTo(0, 0); };
   $('#cancelBtn').onclick = closeSheet;
   $('#saveBtn').onclick = saveSheet;
@@ -2179,7 +2191,7 @@
       if (act === 'addto') return openSheet(null, el.dataset.p);
       if (act.startsWith('map')) return void mapAct(act, el);
       if (act.startsWith('deal')) return void dealAct(act, el);
-      if (act === 'repopen') { repName = el.dataset.r; view = 'rep'; render(); window.scrollTo(0, 0); return; }
+      if (act === 'repopen') { asRep = el.dataset.r; view = 'projects'; render(); window.scrollTo(0, 0); return; }
       if (act === 'openjob') { curJob = el.dataset.p; jobTab = 'chat'; tabHist = []; chatSearch = false; chatLimit = 300; view = 'job'; render(); return; }
       if (act === 'go') { view = el.dataset.v; filter = 'all'; render(); window.scrollTo(0, 0); return; }
       if (act === 'addkick') return openPick('Add the kickoff checklist', [{ label: 'Start today', fn: () => addKickoff(curJob, 0) }, { label: 'Start tomorrow at 8:00 AM', fn: () => addKickoff(curJob, 1) }, { label: 'Start in 2 days', fn: () => addKickoff(curJob, 2) }]);

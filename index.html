@@ -9,8 +9,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.svg">
 <title>My Tasks</title>
-<link rel="stylesheet" href="assets/base.css?v=69">
-<link rel="stylesheet" href="assets/theme.css?v=69">
+<link rel="stylesheet" href="assets/base.css?v=70">
+<link rel="stylesheet" href="assets/theme.css?v=70">
 </head>
 <body class="blueprint">
 <div class="app">
@@ -72,6 +72,7 @@
   <div id="vBody"></div>
 </div>
 <div class="toast" id="toast"></div>
+<div id="asbar" hidden><span>👁 Viewing <b id="asName"></b>'s app</span><button id="asSum">My earnings</button><button id="asExit">Exit</button></div>
 <nav>
   <button data-view="today" class="active"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/><circle cx="12" cy="12" r="9.5"/></svg><span>Today</span></button>
   <button data-view="projects"><svg viewBox="0 0 24 24"><path d="M3.5 7.5a2 2 0 012-2h4l2 2.5h7a2 2 0 012 2v8a2 2 0 01-2 2h-13a2 2 0 01-2-2z"/></svg><span>Jobs</span></button>
@@ -429,7 +430,7 @@
 <script>
 // Safety net: shows a repair bar if the app fails to start or throws an error. Never deletes your saved tasks.
 (function () {
-  var EXPECT = '69', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
+  var EXPECT = '70', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
   function show(t) { try { msg.textContent = t; bar.hidden = false; } catch (e) {} }
   window.__oafNotify = show;
   window.addEventListener('error', function (e) { if (e.message && /ResizeObserver|Script error/.test(e.message)) return; show('Error: ' + (e.message || 'unknown') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
@@ -455,12 +456,12 @@
   }, 3500);
 })();
 </script>
-<script src="assets/config.js?v=69"></script>
-<script src="assets/app.js?v=69"></script>
+<script src="assets/config.js?v=70"></script>
+<script src="assets/app.js?v=70"></script>
 <script>
 // The cloud library loads in the background, so a slow connection never blocks the app from opening.
 (function () {
-  var V = '69';
+  var V = '70';
   function boot() { var s = document.createElement('script'); s.src = 'assets/sync.js?v=' + V; document.body.appendChild(s); }
   if (window.OAF_CFG && window.OAF_CFG.url) {
     var t = document.createElement('script'); t.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';
