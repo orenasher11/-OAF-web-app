@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '70';
+  const APP_VERSION = '72';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -422,7 +422,7 @@
       const t = $('#dl-title').value.trim() || 'Upsell', ups = j.upsells = j.upsells || [], u = dlId && ups.find(x => x.id === dlId), f = { title: t, amount: v, costs, status: 'won' };
       const tgt = u || { id: uid(), at: todayISO(), wonAt: todayISO() }; Object.assign(tgt, f); delete tgt.cost; if (dlReps.length) tgt.repNames = dlReps.slice(); else delete tgt.repNames; if (lp === '') delete tgt.leadPct; else tgt.leadPct = parseFloat(lp) || 0; if (!u) ups.push(tgt);
     }
-    saveJobs(); $('#dlBg').classList.remove('open'); render(); toast('Saved');
+    syncMembers(j); saveJobs(); $('#dlBg').classList.remove('open'); render(); toast('Saved');
   }
   $('#dlDel').onclick = () => { const j = jobs[dealJob]; if (!j) return; const gone = (j.upsells || []).find(x => x.id === dlId); j.upsells = (j.upsells || []).filter(x => x.id !== dlId); saveJobs(); $('#dlBg').classList.remove('open'); render(); toast('Upsell removed', () => { j.upsells = [...(j.upsells || []), gone]; saveJobs(); render(); }); };
   $('#dlPdf').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) maybeContract(dealJob, { name: f.name, mime: f.type, blob: f }, true); };
@@ -1108,11 +1108,12 @@
   function goTab(t) { if (t !== jobTab) tabHist.push(jobTab); jobTab = t; chatSearch = false; render(); window.scrollTo(0, 0); }
   function backTab() { jobTab = tabHist.pop() || 'chat'; chatSearch = false; render(); if (jobTab !== 'chat') window.scrollTo(0, 0); }
   function defaultGroupPhones(j) { return getSubs(j).filter(x => hasPhone(x.phone)).map(x => cleanPhone(x.phone)); }
-  // group members = you + your partners/reps from My team (+ AI bots). Subs are listed separately.
-  function membersOf(n) {
-    const excl = (jobs[n] || {}).excl || [];
-    return team.filter(x => !excl.includes(x.id)).map(x => ({ ...x, kind: 'team' }));
-  }
+  // A job's group has only the people you added to it (plus the rep who sold it and reps on its sales). Subs are listed separately.
+  const defaultMemberIds = j => { const names = new Set([j.seller, ...(j.repNames || []), ...(j.upsells || []).flatMap(u => u.repNames || [])].filter(Boolean)); return team.filter(x => names.has(x.name)).map(x => x.id); };
+  const memberIds = j => Array.isArray(j.members) ? j.members : defaultMemberIds(j);
+  function membersOf(n) { const j = jobs[n] || {}, ids = memberIds(j); return team.filter(x => ids.includes(x.id)).map(x => ({ ...x, kind: 'team' })); }
+  // once you've chosen members by hand, a rep you pick on a sale joins the job too
+  function syncMembers(j) { if (!Array.isArray(j.members)) return; defaultMemberIds(j).forEach(id => { if (!j.members.includes(id)) j.members.push(id); }); }
   function openPick(title, items) {
     $('#pickTitle').textContent = title;
     $('#pickList').innerHTML = items.map((it, i) => `<button class="pickbtn ${it.danger ? 'dng' : ''}" data-i="${i}">${esc(it.label)}</button>`).join('');
@@ -1136,17 +1137,17 @@
   }
   function memberMenu(n, i) {
     const x = membersOf(n)[i]; if (!x) return; const j = jobs[n] = jobs[n] || {};
-    personMenu(x, [{ label: 'Remove from this job group', danger: true, fn: () => { j.excl = [...(j.excl || []), x.id]; saveJobs(); render(); } }]);
+    personMenu(x, [{ label: 'Remove from this job', danger: true, fn: () => { j.members = memberIds(j).filter(id => id !== x.id); saveJobs(); render(); toast(x.name + ' removed'); } }]);
   }
   function subMenu(n, i) {
     const x = getSubs(jobs[n])[i]; if (!x) return;
     personMenu({ ...x, role: x.trade || 'Sub' }, [{ label: '✎ Edit subs on this job', fn: () => openEdit(n) }]);
   }
   function addMemberMenu(n) {
-    const j = jobs[n] = jobs[n] || {}, out = team.filter(x => (j.excl || []).includes(x.id));
-    const items = out.map(x => ({ label: '＋ Add back ' + label2(x), fn: () => { j.excl = (j.excl || []).filter(id => id !== x.id); saveJobs(); render(); toast(x.name + ' added'); } }));
+    const j = jobs[n] = jobs[n] || {}, ids = memberIds(j), out = team.filter(x => !ids.includes(x.id));
+    const items = out.map(x => ({ label: '＋ ' + label2(x), fn: () => { j.members = [...memberIds(j), x.id]; saveJobs(); render(); toast(x.name + ' added'); } }));
     items.push({ label: '＋ New partner or sales rep…', fn: () => { teamFromMsg = false; openTeam(); addTeamRow({ role: 'Sales rep' }); } });
-    openPick('Add to this group', items);
+    openPick(out.length ? 'Add to this job' : 'Everyone on your team is already here', items);
   }
   const findMsg = (id, k) => { const j = jobs[curJob] || {}; return (k === 'note' ? (j.notes || []) : (j.chat || [])).find(x => x.id === id); };
   function delMsg(id, k) {
@@ -1197,11 +1198,11 @@
         <button class="srow addm" data-act="finadd"><span class="sico">＋</span><span class="slbl">Add finance company</span></button></div>
       <div class="ssec">${mem.length + 1 + BOTS.length} members</div><div class="scard">
         <div class="mrow me">${`<span class="mav" style="background:#0f2747">${esc((OWNER || 'Y')[0])}</span>`}<span class="mbody"><b>${esc(OWNER || 'You')}</b><small>You</small></span></div>
-        ${mem.map((x, i) => `<div class="mrow" data-act="member" data-i="${i}">${avatar(x)}<span class="mbody"><b>${esc(x.name)}</b><small>${esc(x.role || '')}${x.phone ? ' · ' + esc(x.phone) : ' · no phone'}</small></span>${hasPhone(x.phone) ? `<a class="mcall" href="tel:${esc(cleanPhone(x.phone))}" data-name="${esc(x.name)}" data-phone="${esc(x.phone)}" aria-label="Call">📞</a>` : ''}</div>`).join('')}
+        ${mem.map((x, i) => `<div class="mrow" data-act="member" data-i="${i}">${avatar(x)}<span class="mbody"><b>${esc(x.name)}</b><small>${esc(x.role || '')}${x.phone ? ' · ' + esc(x.phone) : ' · no phone'}</small></span>${hasPhone(x.phone) ? `<a class="mcall" href="tel:${esc(cleanPhone(x.phone))}" data-name="${esc(x.name)}" data-phone="${esc(x.phone)}" aria-label="Call">📞</a>` : ''}<button type="button" class="mrm" data-act="memberrm" data-i="${i}" aria-label="Remove person">✕</button></div>`).join('')}
         ${BOTS.map(b => `<div class="mrow"><span class="mav" style="background:#ff6a1a">🤖</span><span class="mbody"><b>${esc(b.name)}</b><small>${esc(b.role)}</small></span></div>`).join('')}
-        <button class="srow addm" data-act="addmember"><span class="sico">＋</span><span class="slbl">Add partner or rep</span></button></div>
+        <button class="srow addm" data-act="addmember"><span class="sico">＋</span><span class="slbl">Add a partner or rep to this job</span></button></div>
       <div class="ssec">${subsL.length} ${subsL.length === 1 ? 'sub' : 'subs'} on this job</div><div class="scard">
-        ${subsL.map((x, i) => `<div class="mrow" data-act="subrow" data-i="${i}"><span class="mav sq" style="background:${nameColor(x.name)}">🔧</span><span class="mbody"><b>${esc(x.name)}</b><small>${esc(x.trade || 'Sub')}${x.phone ? ' · ' + esc(x.phone) : ' · no phone'}</small></span>${hasPhone(x.phone) ? `<a class="mcall" href="tel:${esc(cleanPhone(x.phone))}" data-name="${esc(x.name)}" data-phone="${esc(x.phone)}" aria-label="Call">📞</a>` : ''}</div>`).join('')}
+        ${subsL.map((x, i) => `<div class="mrow" data-act="subrow" data-i="${i}"><span class="mav sq" style="background:${nameColor(x.name)}">🔧</span><span class="mbody"><b>${esc(x.name)}</b><small>${esc(x.trade || 'Sub')}${x.phone ? ' · ' + esc(x.phone) : ' · no phone'}</small></span>${hasPhone(x.phone) ? `<a class="mcall" href="tel:${esc(cleanPhone(x.phone))}" data-name="${esc(x.name)}" data-phone="${esc(x.phone)}" aria-label="Call">📞</a>` : ''}<button type="button" class="mrm" data-act="subrm" data-i="${i}" aria-label="Remove sub">✕</button></div>`).join('')}
         <button class="srow addm" data-act="addsub"><span class="sico">＋</span><span class="slbl">Add sub</span></button></div>
       <div class="ssec">Job settings</div><div class="scard">
         ${srow('💰', 'Upsell potential', j.upsell ? money(j.upsell) : 'Set', 'upsell', `data-p="${esc(n)}"`)}
@@ -2245,6 +2246,8 @@
       if (act === 'subopen') return contractorMenu(el.dataset.id);
       if (act === 'subpick') { const id = el.dataset.id; pickSel.has(id) ? pickSel.delete(id) : pickSel.add(id); const sc = window.scrollY; render(); window.scrollTo(0, sc); return; }
       if (act === 'pickdone') return applyPick();
+      if (act === 'memberrm') { const j = jobs[curJob] || {}, x = membersOf(curJob)[+el.dataset.i]; if (!x) return; const before = memberIds(j).slice(); j.members = before.filter(id => id !== x.id); saveJobs(); render(); return toast(x.name + ' removed from this job', () => { j.members = before; saveJobs(); render(); }); }
+      if (act === 'subrm') { const j = jobs[curJob] || {}, subs = getSubs(j).slice(), x = subs[+el.dataset.i]; if (!x) return; j.subs = subs.filter((_, k) => k !== +el.dataset.i); saveJobs(); render(); return toast(x.name + ' removed from this job', () => { j.subs = subs; saveJobs(); render(); }); }
       if (act === 'member') { if (e.target.closest('.mcall')) return; return memberMenu(curJob, +el.dataset.i); }
       if (act === 'mtab') { mediaTab = el.dataset.t; return render(); }
       if (act === 'openlink') return void window.open(el.dataset.u, '_blank');
