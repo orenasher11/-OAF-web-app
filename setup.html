@@ -81,8 +81,20 @@
   </div>
 
   <div class="step">
-    <h2><span class="n">5</span>Invite your partners</h2>
-    <p>After I connect the app, open the app, go to <b>Projects → ☁️ Cloud</b>, sign in with your email, and use <b>Invite someone</b> to add each partner's email. Then they sign in the same way.</p>
+    <h2><span class="n">6</span>Private access for your sales reps</h2>
+    <p>Do this <b>once, before you invite your first rep</b>. It makes the cloud itself hide everything a rep should not see: your 1%, your team list, other reps' jobs and who else has an account. Partners you invite as <b>Partner</b> still see everything.</p>
+    <button id="copyrep">Copy the private-access code</button>
+    <ol>
+      <li>In Supabase, open <b>SQL Editor</b>, then <b>New query</b>.</li>
+      <li>Paste the code (touch and hold, then Paste), then tap <b>Run</b>.</li>
+      <li>It should say <b>Success</b>. It is safe to run twice.</li>
+    </ol>
+    <details><summary><small>Show the code</small></summary><pre id="sqlrep">Loading…</pre></details>
+  </div>
+
+  <div class="step">
+    <h2><span class="n">5</span>Invite your partners and reps</h2>
+    <p>In the app, go to <b>More → ☁️ Cloud</b>. Under <b>Invite someone by email</b>, type their email and choose <b>Sales rep: only their own jobs</b> (then pick which rep) or <b>Partner: everything</b>. They open the app, tap Cloud, and sign in with that email.</p>
   </div>
 </main>
 <script src="assets/config.js"></script>
@@ -102,6 +114,9 @@
     if (!sqlText) { alert('The code is still loading. Try again in a moment.'); return; }
     copy(sqlText.replace("lower('YOUR_EMAIL_HERE')", "lower('" + em.replace(/'/g, '') + "')"), this, '✓ Copied. Now paste it in Supabase');
   };
+  var repSql = '';
+  fetch('supabase/rep-access.sql', { cache: 'no-cache' }).then(function (r) { return r.text(); }).then(function (t) { repSql = t; document.getElementById('sqlrep').textContent = t; }).catch(function () { document.getElementById('sqlrep').textContent = 'Could not load the code. Check your connection and reload.'; });
+  document.getElementById('copyrep').onclick = function () { if (!repSql) { alert('The code is still loading. Try again in a moment.'); return; } copy(repSql, this, '✓ Copied. Now paste it in Supabase'); };
   document.getElementById('copytpl').onclick = function () { copy('<h2>Your sign-in code</h2>\n<p>Type this code in the app: <b>{{ .Token }}</b></p>', this, '✓ Copied'); };
 </script>
 </body>

@@ -11,6 +11,8 @@
   const sb = enabled ? window.supabase.createClient(CFG.url, CFG.anon) : null;
   const META_KEY = 'oaf-sync-v1';
   let ws = null, user = null, profile = null, channel = null, poller = null, pushTimer = null;
+  let access = { role: '', rep: '' };
+  const isRep = () => access.role === 'rep';
   let ui = enabled ? 'loading' : 'off', email = '', err = '', lastSync = null, busy = false, members = [], invites = [], again = false;
   let meta = { synced: {}, lastPull: '', up: {} };
   try { meta = { ...meta, ...(JSON.parse(localStorage.getItem(META_KEY)) || {}) }; } catch {}
@@ -33,11 +35,11 @@
       (chat || []).forEach(m => { d[m.id] = { kind: 'msg', data: { ...m, job: name } }; });
       (notes || []).forEach(m => { d[m.id] = { kind: 'note', data: { ...m, job: name } }; });
     });
-    (st.team || []).forEach(x => { d['team:' + x.id] = { kind: 'team', data: x }; });
+    if (!isRep()) (st.team || []).forEach(x => { d['team:' + x.id] = { kind: 'team', data: x }; });
     (st.leads || []).forEach(l => { d[l.id] = { kind: 'lead', data: l }; });
     (st.reports || []).forEach(r => { d[r.id] = { kind: 'report', data: r }; });
     (st.subsDir || []).filter(x => !x.demo).forEach(x => { d['sub:' + x.id] = { kind: 'sub', data: x }; });
-    if (st.cfg) d['cfg:main'] = { kind: 'cfg', data: st.cfg };
+    if (st.cfg && !isRep()) { d['cfg:main'] = { kind: 'cfg', data: st.cfg }; d['cfg:rates'] = { kind: 'cfg', data: { split: st.cfg.split, leadFirst: st.cfg.leadFirst, leadUp: st.cfg.leadUp } }; }
     return d;
   }
   function applyRow(st, row) {
@@ -97,8 +99,9 @@
     const total = Object.keys(meta.synced).length;
     const suspicious = gone.length > 20 && gone.length > total * 0.5 && !A.deleteOK;
     if (!suspicious) gone.forEach(id => rows.push({ workspace_id: ws, id, kind: meta.synced[id].k || 'task', data: {}, deleted: true, h: null }));
-    for (let i = 0; i < rows.length; i += 200) {
-      const chunk = rows.slice(i, i + 200);
+    const groups = [rows.filter(r => r.kind === 'job'), rows.filter(r => r.kind !== 'job')];
+    for (const grp of groups) for (let i = 0; i < grp.length; i += 200) {
+      const chunk = grp.slice(i, i + 200);
       const { error } = await sb.from('docs').upsert(chunk.map(({ h, ...r }) => r), { onConflict: 'workspace_id,id' });
       if (error) throw error;
       chunk.forEach(r => { if (r.deleted) delete meta.synced[r.id]; else meta.synced[r.id] = { h: r.h, k: r.kind }; });
@@ -152,6 +155,8 @@
     const { data, error } = await sb.rpc('bootstrap');
     if (error) { err = error.message; ui = 'noaccess'; paint(); return; }
     ws = data;
+    try { const me = await sb.from('members').select('role, rep_name').eq('workspace_id', ws).eq('user_id', u.id).maybeSingle(); access = { role: (me.data && me.data.role) || 'member', rep: (me.data && me.data.rep_name) || '' }; } catch { access = { role: 'member', rep: '' }; }
+    if (A.setAccess) A.setAccess(access.role, access.rep);
     const { data: p } = await sb.from('profiles').select('*').eq('id', u.id).maybeSingle();
     profile = p;
     if (!p || !p.name) { ui = 'name'; paint(); return; }
@@ -163,23 +168,25 @@
     clearInterval(poller); poller = setInterval(() => { if (!document.hidden) run(); }, 30000);
   }
   async function loadPeople() {
+    if (isRep()) { members = []; invites = []; paint(); return; }
     try {
-      const m = await sb.from('members').select('user_id, role').eq('workspace_id', ws);
+      const m = await sb.from('members').select('user_id, role, rep_name').eq('workspace_id', ws);
       const ids = (m.data || []).map(x => x.user_id);
       const pr = ids.length ? await sb.from('profiles').select('id, name, email').in('id', ids) : { data: [] };
       members = (m.data || []).map(x => ({ ...x, ...((pr.data || []).find(p => p.id === x.user_id) || {}) }));
-      const iv = await sb.from('invites').select('email, role').eq('workspace_id', ws);
+      const iv = await sb.from('invites').select('email, role, rep_name').eq('workspace_id', ws);
       invites = iv.data || [];
     } catch {} paint();
   }
   async function signOut() {
     clearInterval(poller); A.onChange = null; try { await sb.auth.signOut(); } catch {}
-    user = null; ws = null; window.OAF_ME = null; ui = 'out'; paint();
+    user = null; ws = null; window.OAF_ME = null; access = { role: '', rep: '' }; if (A.setAccess) A.setAccess('', ''); ui = 'out'; paint();
   }
 
   // ---- sheet UI ----
   const label = () => !enabled ? 'Not set up' : ui === 'in' ? (busy ? 'Syncing…' : err ? 'Problem' : 'Synced') : 'Signed out';
   function openSheet() { $('#cloudBg').classList.add('open'); paint(); }
+  const repChoices = () => { const t = (A.getState().team || []).filter(x => x.name && !/owner|partner/i.test(x.role || '')).map(x => x.name); return [...new Set(t)]; };
   function paint() {
     const b = $('#cloudBody'); if (!b) return;
     const btn = $('#cloudBtn'); if (btn) btn.textContent = '☁️ Cloud · ' + label();
@@ -199,12 +206,15 @@
     else if (ui === 'in') h = `<div class="cok">✓ Signed in as <b>${esc(profile?.name || '')}</b><br><small>${esc(user?.email || '')}</small></div>
       <div class="cstat">${busy ? 'Syncing…' : lastSync ? 'Last synced ' + lastSync.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Not synced yet'}</div>${e}
       <div class="actions"><button class="btn ghost" id="c-sync">Sync now</button><button class="btn ghost" id="c-out">Sign out</button></div>
-      <div class="ssec">People who can use the app</div>
-      <div class="scard">${members.map(m => `<div class="mrow"><span class="mbody"><b>${esc(m.name || m.email || 'Member')}</b><small>${esc(m.role === 'owner' ? 'Owner' : 'Member')} · ${esc(m.email || '')}</small></span></div>`).join('')}
-        ${invites.map(i => `<div class="mrow"><span class="mbody"><b>${esc(i.email)}</b><small>Invited · hasn't signed in yet</small></span><button class="cx" data-rm="${esc(i.email)}" aria-label="Remove invite">×</button></div>`).join('')}</div>
-      <label for="c-inv">Invite someone by email</label><input id="c-inv" type="email" inputmode="email" placeholder="partner@example.com">
+      ${isRep() ? `<div class="hint">You're signed in as the sales rep <b>${esc(access.rep || 'unassigned')}</b>. You see your own jobs and what belongs to them.</div>` : `<div class="ssec">People who can use the app</div>
+      <div class="scard">${members.map(m => `<div class="mrow"><span class="mbody"><b>${esc(m.name || m.email || 'Member')}</b><small>${esc(m.role === 'owner' ? 'Owner' : m.role === 'rep' ? 'Sales rep · ' + (m.rep_name || '') : 'Partner')} · ${esc(m.email || '')}</small></span></div>`).join('')}
+        ${invites.map(i => `<div class="mrow"><span class="mbody"><b>${esc(i.email)}</b><small>Invited as ${i.role === 'rep' ? 'sales rep ' + esc(i.rep_name || '') : 'partner'} · hasn't signed in yet</small></span><button class="cx" data-rm="${esc(i.email)}" aria-label="Remove invite">×</button></div>`).join('')}</div>
+      <label for="c-inv">Invite someone by email</label><input id="c-inv" type="email" inputmode="email" placeholder="name@example.com">
+      <label for="c-role">What can they see?</label>
+      <select id="c-role"><option value="rep">Sales rep: only their own jobs</option><option value="member">Partner: everything</option></select>
+      <div id="c-repwrap"><label for="c-repname">Which rep is this?</label><select id="c-repname">${repChoices().map(n => `<option>${esc(n)}</option>`).join('') || '<option value="">Add the rep under My team first</option>'}</select></div>
       <div class="actions"><button class="btn primary" id="c-invite">Send invite</button></div>
-      <div class="hint">After you invite them, tell them to open the app, tap Cloud, and sign in with that email.</div>`;
+      <div class="hint">Reps never see your numbers, your team list, other reps' jobs or who else has an account. After you invite someone, tell them to open the app, tap Cloud, and sign in with that email.</div>`}`;
     b.innerHTML = h;
   }
   async function guard(fn) { err = ''; try { await fn(); } catch (e) { err = (e && e.message) || String(e); paint(); } }
@@ -243,10 +253,13 @@
     else if (id === 'c-out') { signOut(); }
     else if (id === 'c-invite') guard(async () => {
       const em = ($('#c-inv').value || '').trim().toLowerCase(); if (!em) return;
-      const { error } = await sb.from('invites').upsert({ workspace_id: ws, email: em, role: 'member' }); if (error) throw error;
+      const role = ($('#c-role') || {}).value === 'member' ? 'member' : 'rep', repName = role === 'rep' ? (($('#c-repname') || {}).value || '').trim() : null;
+      if (role === 'rep' && !repName) { err = 'Pick which rep this is. Add them under More → My team first.'; return paint(); }
+      const { error } = await sb.from('invites').upsert({ workspace_id: ws, email: em, role, rep_name: repName }); if (error) { if (/rep_name|column/i.test(error.message || '')) throw new Error('Run the private-access update first: open the setup page (More → ☁️ Cloud → setup guide), step 6.'); throw error; }
       $('#c-inv').value = ''; await loadPeople();
     });
   });
+  document.addEventListener('change', e => { if (e.target && e.target.id === 'c-role') { const w = $('#c-repwrap'); if (w) w.hidden = e.target.value !== 'rep'; } });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && ws) run(); });
 
   // ---- start ----

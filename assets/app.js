@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '84';
+  const APP_VERSION = '86';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -19,7 +19,7 @@
   ];
   const catOf = id => CATS.find(c => c.id === id);
 
-  let asRep = '', swapping = false;
+  let asRep = '', swapping = false, repMode = false;   // repMode: this phone belongs to a sales rep, who only ever sees their own jobs
   let tasks = [], view = 'today', filter = 'all', editingId = null, curJob = '', jobTab = 'chat';
   let formCat = '', formStar = false, lastUndo = null, toastTimer = null;
   const collapsed = new Set();
@@ -780,13 +780,13 @@
         <div class="mrow"><span class="sico">🎯</span><span class="mbody"><b>Lead cost</b><small>${cfg.leadFirst}% of the contract, ${cfg.leadUp}% of upsells</small></span><b>−${money0(e.lead)}</b></div>
         <div class="mrow"><span class="sico">🧾</span><span class="mbody"><b>Expenses</b><small>Turf, materials, fees you added to jobs</small></span><b>−${money0(e.costs)}</b></div>
         <div class="mrow"><span class="sico">📊</span><span class="mbody"><b>Profit to split</b><small>Sales side gets ${cfg.split}% (shared by the reps on a file), company ${100 - cfg.split}%</small></span><b>${money0(e.profit)}</b></div>
-        <div class="mrow"><span class="sico">🤝</span><span class="mbody"><b>Rep overrides</b><small>${cfg.override}% of rep deals</small></span><b>${money0(e.over)}</b></div>
+        ${asRep ? '' : `<div class="mrow"><span class="sico">🤝</span><span class="mbody"><b>Rep overrides</b><small>${cfg.override}% of rep deals</small></span><b>${money0(e.over)}</b></div>`}
       </div>
-      <div class="ssec">Yearly goal</div>
+      ${repMode ? '<div hidden>' : ''}<div class="ssec">Yearly goal</div>
       <div class="scard goal"><div class="grow"><b>${money0(ytd.net)}</b><span>of ${money0(cfg.goal)} · ${pct}%</span></div>
         <div class="prog"><i style="width:${pct}%"></i></div>
         <div class="gnote">At this pace you finish the year at <b>${money0(pace)}</b>${cfg.goal && pace < cfg.goal ? ` (${money0(cfg.goal - pace)} short)` : cfg.goal ? ' 🎉' : ''}</div>
-        <button class="spill" data-act="cfgedit">⚙ Rates &amp; goal</button></div>
+        ${repMode ? '' : '<button class="spill" data-act="cfgedit">⚙ Rates &amp; goal</button>'}</div>${repMode ? '</div>' : ''}
       ${(() => {
         const act = Object.entries(jobs).filter(([, j]) => j && !j.archived).map(([n, j]) => [n, j, finSummary(j)]).filter(x => x[2].room > 0).sort((a, b) => b[2].room - a[2].room);
         const tot = act.reduce((a, x) => a + x[2].room, 0), off = act.reduce((a, x) => a + Math.min(x[2].offered, x[2].room), 0);
@@ -860,7 +860,7 @@
   $('#ldSave').onclick = () => {
     const name = $('#l-name').value.trim(); if (!name) { $('#l-name').focus(); return; }
     const data = { name, phone: $('#l-phone').value.trim(), addr: $('#l-addr').value.trim(), source: $('#l-src').value.trim(), value: parseInt($('#l-val').value.replace(/[^0-9]/g, ''), 10) || 0,
-      next: $('#l-next').value, meetAt: $('#l-mdate').value, meetTime: $('#l-mtime').value, notes: $('#l-notes').value.trim(), rep: $('#l-rep').value, stage: leadStageSel };
+      next: $('#l-next').value, meetAt: $('#l-mdate').value, meetTime: $('#l-mtime').value, notes: $('#l-notes').value.trim(), rep: repMode ? asRep : $('#l-rep').value, stage: leadStageSel };
     let l; if (editLeadId) { l = leads.find(x => x.id === editLeadId); Object.assign(l, data); } else { l = { id: uid(), createdAt: todayISO(), ...data }; leads.push(l); }
     saveLeads(); $('#leadBg').classList.remove('open'); render();
     if (data.stage === 'sold' && !l.job) leadToJob(l);
@@ -1135,8 +1135,8 @@
   // A job's group has only the people you added to it (plus the rep who sold it and reps on its sales). Subs are listed separately.
   // reps on a rep-sold file: the one who sold it plus the others you add. Your override is paid once per file, so it is split between them on each rep's board.
   // Owner and partners (like Ilan and Kay) are in every job's group automatically and are never counted as reps.
-  const isPartner = x => !!x && (/owner|partner/i.test(x.role || '') || x.name === OWNER);
-  const partnerNames = () => [...team.filter(isPartner).map(x => x.name), OWNER].filter(Boolean);
+  const isPartner = x => !!x && (/owner|partner/i.test(x.role || '') || (!repMode && x.name === OWNER));
+  const partnerNames = () => [...team.filter(isPartner).map(x => x.name), ...(repMode ? [] : [OWNER])].filter(Boolean);
   const noPartners = arr => { const p = partnerNames(); return (arr || []).filter(nm => nm && !p.includes(nm)); };
   const repTeam = () => team.filter(x => !isPartner(x));
   // a file counts as a rep's only if the seller is a real rep. Jobs sold by you, or by a partner like Kay or Ilan, stay in your own lists.
@@ -1216,12 +1216,12 @@
       <div class="gactions">
         <button data-act="callall"><i>📞</i>Call</button>
         <button data-act="${j.addr ? 'navjob' : 'editjobd'}"><i>🧭</i>Navigate</button>
-        <button data-act="addmember"><i>＋</i>Add</button>
+        ${repMode ? '' : '<button data-act="addmember"><i>＋</i>Add</button>'}
         <button data-act="search"><i>🔍</i>Search</button></div>
       ${(() => { const mm = jobNet(j); return `<button class="moneycard" data-act="moneyjob" data-p="${esc(n)}">${j.contract ? `<span class="mcl">Contract <b>${money0(j.contract)}</b></span><span class="mcr">You keep <b>${money0(mm.net)}</b></span><small>${isRepJob(j) && !asRep ? 'Sold by ' + esc(jobReps(j).join(' + ')) + ' · your ' + cfg.override + '% override' : money0(mm.lead) + ' lead cost · ' + money0(mm.costs) + ' expenses' + (mm.reps > 1 ? ' · split ' + mm.reps + ' ways' : '')} · tap to edit</small>` : '<span class="mcl"><b>💵 Add the contract amount</b></span><small>See what you keep after lead cost and expenses</small>'}</button>`; })()}
       <div class="quickrow"><button data-act="qexp"><i>🧾</i>Add expense<small>${(() => { const mm = jobNet(j); return mm.costs ? money0(mm.costs) + ' so far' : 'none yet'; })()}</small></button><button data-act="qup"><i>⬆️</i>Add upsell</button></div>
-      <div class="scard whocard"><button class="srow" data-act="soldby"><span class="sico">👤</span><span class="slbl"><b>Sold by</b><small>${isRepJob(j) ? 'The rep who sold it. You get ' + cfg.override + '%' : 'Tap to choose the rep who sold it'}</small></span><span class="sval"><b>${esc(isRepJob(j) ? j.seller : (asRep ? asRep : 'Me'))}</b></span><span class="schev">›</span></button>
-        <button class="srow" data-act="alsoreps"><span class="sico">👥</span><span class="slbl"><b>Also on this file</b><small>Anyone sharing this sale with you, Kay included</small></span><span class="sval">${esc((j.repNames || []).join(', ') || 'None')}</span><span class="schev">›</span></button></div>
+      ${repMode ? '' : `<div class="scard whocard"><button class="srow" data-act="soldby"><span class="sico">👤</span><span class="slbl"><b>Sold by</b><small>${isRepJob(j) ? 'The rep who sold it. You get ' + cfg.override + '%' : 'Tap to choose the rep who sold it'}</small></span><span class="sval"><b>${esc(isRepJob(j) ? j.seller : (asRep ? asRep : 'Me'))}</b></span><span class="schev">›</span></button>
+        <button class="srow" data-act="alsoreps"><span class="sico">👥</span><span class="slbl"><b>Also on this file</b><small>Anyone sharing this sale with you, Kay included</small></span><span class="sval">${esc((j.repNames || []).join(', ') || 'None')}</span><span class="schev">›</span></button></div>`}
       <div class="ssec">Media</div><div class="scard">
         ${srow('🖼️', 'Media, links and docs', media.length + links, 'jtab', 'data-tab="media"')}
         ${srow('⭐', 'Starred messages', starred, 'jtab', 'data-tab="starred"')}
@@ -1240,7 +1240,7 @@
         <div class="mrow me">${`<span class="mav" style="background:#0f2747">${esc((OWNER || 'Y')[0])}</span>`}<span class="mbody"><b>${esc(OWNER || 'You')}</b><small>You</small></span></div>
         ${mem.map((x, i) => `<div class="mrow" data-act="member" data-i="${i}">${avatar(x)}<span class="mbody"><b>${esc(x.name)}</b><small>${esc(x.role || '')}${x.phone ? ' · ' + esc(x.phone) : ' · no phone'}</small></span>${hasPhone(x.phone) ? `<a class="mcall" href="tel:${esc(cleanPhone(x.phone))}" data-name="${esc(x.name)}" data-phone="${esc(x.phone)}" aria-label="Call">📞</a>` : ''}${isPartner(x) ? '<span class="alw">Always</span>' : `<button type="button" class="mrm" data-act="memberrm" data-i="${i}" aria-label="Remove person">✕</button>`}</div>`).join('')}
         ${BOTS.map(b => `<div class="mrow"><span class="mav" style="background:#ff6a1a">🤖</span><span class="mbody"><b>${esc(b.name)}</b><small>${esc(b.role)}</small></span></div>`).join('')}
-        <button class="srow addm" data-act="addmember"><span class="sico">＋</span><span class="slbl">Add a partner or rep to this job</span></button></div>
+        <button class="srow addm" data-act="addmember"${repMode ? ' hidden' : ''}><span class="sico">＋</span><span class="slbl">Add a partner or rep to this job</span></button></div>
       <div class="ssec">${subsL.length} ${subsL.length === 1 ? 'sub' : 'subs'} on this job</div><div class="scard">
         ${subsL.map((x, i) => `<div class="mrow" data-act="subrow" data-i="${i}"><span class="mav sq" style="background:${nameColor(x.name)}">🔧</span><span class="mbody"><b>${esc(x.name)}</b><small>${esc(x.trade || 'Sub')}${x.phone ? ' · ' + esc(x.phone) : ' · no phone'}</small></span>${hasPhone(x.phone) ? `<a class="mcall" href="tel:${esc(cleanPhone(x.phone))}" data-name="${esc(x.name)}" data-phone="${esc(x.phone)}" aria-label="Call">📞</a>` : ''}<button type="button" class="mrm" data-act="subrm" data-i="${i}" aria-label="Remove sub">✕</button></div>`).join('')}
         <button class="srow addm" data-act="addsub"><span class="sico">＋</span><span class="slbl">Add sub</span></button></div>
@@ -1592,11 +1592,12 @@
   function destroyRepMap() { if (repMap) { try { repMap.remove(); } catch {} repMap = null; } }
 
   // "View as a rep": every screen shows only that rep's jobs, tasks and leads, with their pay worked out the same way as yours.
-  function paintAsBar() { const b = $('#asbar'); if (!b) return; b.hidden = !asRep; if (asRep) $('#asName').textContent = asRep; }
+  function paintAsBar() { const b = $('#asbar'); if (!b) return; b.hidden = !asRep || repMode; if (asRep) $('#asName').textContent = asRep; }
   // Your own screens show only the jobs you sold yourself. A rep's jobs show only when you open that rep (My reps).
   // Rep switcher: a row under the title on the main screens. Me, then each rep, then All.
   const REPBAR_VIEWS = ['today', 'projects', 'map', 'money', 'reports'];
   function repBarHTML() {
+    if (repMode) return '';
     const names = repNames(); if (!names.length) return '';
     const range = periodRange('month'), first = n => String(n).split(' ')[0];
     const chip = (cls, act, r, label, dot) => `<button class="rbchip ${cls}" data-act="${act}"${r ? ` data-r="${esc(r)}"` : ''}>${label}${dot ? '<i class="rbdot"></i>' : ''}</button>`;
@@ -1609,12 +1610,13 @@
     if (!asRep && ['reports', 'rep'].includes(view)) { renderCore(); paintAsBar(); return; }
     jobsFull = J;
     const jr = Object.fromEntries(Object.entries(J).filter(([, j]) => j && (asRep ? repOn(j, asRep) : !isRepJob(j))));
-    jobs = jr; tasks = asRep ? T.filter(t => t.project && jr[t.project]) : T.filter(t => !(t.project && J[t.project] && isRepJob(J[t.project])));
+    jobs = jr; tasks = asRep ? T.filter(t => repMode ? (!t.project || jr[t.project]) : (t.project && jr[t.project])) : T.filter(t => !(t.project && J[t.project] && isRepJob(J[t.project])));
     leads = asRep ? L.filter(l => l.rep === asRep) : L.filter(l => !l.rep); swapping = true;
     try { renderCore(); } finally { jobs = J; tasks = T; leads = L; swapping = false; jobsFull = null; }
     paintAsBar();
   }
   function renderCore() {
+    if (repMode && ['reports', 'rep', 'calendar'].includes(view)) view = 'projects';
     if (view === 'job' && curJob && !jobs[curJob]) { view = 'projects'; jobTab = 'chat'; }
     if (view === 'deal' && dealJob && !jobs[dealJob]) { view = 'projects'; }
     const t0 = todayISO();
@@ -1697,7 +1699,7 @@
       $('#h1').textContent = pickJob ? 'Pick your subs' : 'Contractors'; $('#sub').textContent = pickJob ? 'Select as many as you need' : 'Your subs, sorted by trade';
       html += screenContractors();
     } else if (view === 'money') {
-      $('#h1').textContent = 'Money'; $('#sub').textContent = 'Commissions, overrides and upsells';
+      $('#h1').textContent = 'Money'; $('#sub').textContent = asRep ? 'Your sales and upsells' : 'Commissions, overrides and upsells';
       html += screenMoney();
     } else if (view === 'more') {
       const lateV = visitList().filter(v => v.state === 'late').length;
@@ -1707,10 +1709,10 @@
         ${srow('🗓️', 'Upcoming tasks', '', 'go', 'data-v="upcoming"')}
         ${srow('☎️', 'Leads pipeline', leadsDue().length ? `<b class="red">${leadsDue().length} to follow up</b>` : '', 'go', 'data-v="leads"')}
         ${srow('🏦', 'Finance companies', '', 'finedit')}
-        ${srow('👥', 'My reps', repNames().length ? repNames().length + ' reps' : '', 'go', 'data-v="reports"')}
+        ${repMode ? '' : srow('👥', 'My reps', repNames().length ? repNames().length + ' reps' : '', 'go', 'data-v="reports"')}
         ${srow('🌙', 'Evening review', '', 'go', 'data-v="evening"')}</div>
         <div class="ssec">Settings</div><div class="tools">
-        <button id="teamBtn">👥 My team</button>
+        ${repMode ? '' : '<button id="teamBtn">👥 My team</button>'}
         <button id="cloudBtn">☁️ Cloud · ${window.OAFsync ? window.OAFsync.label() : '…'}</button>
         <button id="exportBtn">⬇ Back up</button>
         <button id="importBtn">⬆ Restore</button>
@@ -2139,6 +2141,7 @@
   $('#j-mode').onclick = e => { const c = e.target.closest('[data-m]'); if (c) { jobMode = c.dataset.m; paintMode(); $('#j-stage').value = jobMode === 'old' ? 'IN PROGRESS' : 'PRE NTP'; } };
   let jAlso = [];
   function paintAlso() {
+    if (repMode) { $('#j-also').innerHTML = ''; return; }
     const sel = $('#j-seller').value, names = team.filter(x => x.name !== OWNER && x.name !== sel).map(x => x.name); jAlso = jAlso.filter(n => names.includes(n));
     $('#j-also').innerHTML = names.length ? names.map(nm => `<button type="button" class="chip ${jAlso.includes(nm) ? 'on' : ''}" data-n="${esc(nm)}">${esc(nm)}</button>`).join('') : '<span class="hint">Add reps under More → 👥 My team.</span>';
   }
@@ -2148,7 +2151,7 @@
     jobMode = mode || 'new'; paintMode(); $('#j-stage').innerHTML = JSTAGES.map(x => `<option>${x}</option>`).join(''); $('#j-stage').value = jobMode === 'old' ? 'IN PROGRESS' : 'PRE NTP'; $('#j-fin').innerHTML = finOptions(''); $('#j-appr').value = '';
     ['#j-name', '#j-sub', '#j-phone', '#j-addr', '#j-upsell', '#j-contract'].forEach(i => { $(i).value = ''; $(i).classList.remove('err'); });
     $('#j-seller').innerHTML = (asRep ? `<option value="${esc(asRep)}">${esc(asRep)}</option>` : '<option value="">Me (I sold it)</option>') + repTeam().filter(x => x.name !== asRep).map(x => `<option>${esc(x.name)}</option>`).join('');
-    jAlso = []; paintAlso();
+    jAlso = []; paintAlso(); { const lb = $('#j-also').previousElementSibling; if (lb) lb.hidden = repMode; }
     setKick(addDays(1)); $('#j-time').value = '08:00';
     $('#jobBg').classList.add('open'); setTimeout(() => $('#j-addr').focus(), 60);
   }
@@ -2456,6 +2459,12 @@
       render();
     },
     onChange: null, blobOf,
+    setAccess(role, rep) {
+      const wasRep = repMode; repMode = role === 'rep';
+      if (repMode) { asRep = rep || '(unassigned)'; view = 'projects'; }
+      else if (wasRep) { asRep = ''; }
+      render();
+    },
     setName(n) { if (n) { OWNER = n; try { localStorage.setItem('oaf-name-v1', n); } catch {} render(); } },
   };
   try { if (!subsDir.length && !localStorage.getItem('oaf-subs-imported')) { importSubsFromJobs(); localStorage.setItem('oaf-subs-imported', '1'); if (subsDir.length) render(); } } catch {}
