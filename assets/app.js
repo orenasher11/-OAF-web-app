@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '78';
+  const APP_VERSION = '79';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -363,7 +363,7 @@
   let dealJob = '', dealFrom = 'job', dlMode = '', dlId = '', dlReps = [];
   const UP_IDEAS = ['Turf', 'Pavers', 'Patio', 'Lighting', 'Fence', 'Other'];
   function openDeal(n) { dealFrom = view === 'job' ? 'job' : (view === 'deal' ? dealFrom : view); dealJob = n; view = 'deal'; render(); window.scrollTo(0, 0); }
-  const teamNames = extra => [...new Set([...repTeam().map(x => x.name).filter(Boolean), ...noPartners(extra)])];
+  const teamNames = extra => [...new Set([...team.filter(x => x.name !== OWNER).map(x => x.name).filter(Boolean), ...(extra || [])])];
   const sgn = v => (v < 0 ? '−' : '') + money0(Math.abs(v));
   function screenDeal() {
     const n = dealJob, j = jobs[n] = jobs[n] || {}, m = jobNet(j), sm = finSummary(j);
@@ -434,17 +434,23 @@
   }
   // ---- quick expense ----
   let exJob = '', skipExp = false;
+  let exFor = 'first';
   function openExpense(n, pre = {}) {
-    exJob = n; const j = jobs[n] || {};
+    exJob = n; exFor = pre.sale || 'first'; const j = jobs[n] || {};
     $('#exTitle').textContent = 'Add expense · ' + (j.addr || n); $('#ex-title').value = pre.title || ''; $('#ex-amt').value = fmtAmt(pre.amount);
     $('#exChips').innerHTML = ['Turf', 'Materials', 'Gas', 'Permit', 'Dump fee', 'Sub payment', 'Other'].map(t => `<button type="button" class="chip" data-t="${t}">${t}</button>`).join('');
+    const ups = j.upsells || [];
+    $('#exFor').hidden = !ups.length; $('#exForChips').innerHTML = ups.length ? [['first', j.contract ? 'Prime contract' : 'Job'], ...ups.map(u => [u.id, u.title || 'Upsell'])].map(([k, l]) => `<button type="button" class="chip ${exFor === k ? 'on' : ''}" data-s="${esc(k)}">${esc(l)}</button>`).join('') : '';
     $('#exBg').classList.add('open'); setTimeout(() => $(pre.title ? '#ex-amt' : '#ex-title').focus(), 250);
   }
+  $('#exForChips').onclick = e => { const c = e.target.closest('[data-s]'); if (!c) return; exFor = c.dataset.s; [...$('#exForChips').children].forEach(x => x.classList.toggle('on', x === c)); };
   $('#exChips').onclick = e => { const c = e.target.closest('[data-t]'); if (!c) return; $('#ex-title').value = c.dataset.t; $('#ex-amt').focus(); };
   function saveExpense(receipt) {
     const title = $('#ex-title').value.trim(), amount = amt($('#ex-amt').value);
     if (!amount) { toast('Enter the amount'); $('#ex-amt').focus(); return; }
-    const j = jobs[exJob] = jobs[exJob] || {}; j.costs = [...(j.costs || []), { id: uid(), title: title || 'Expense', amount, date: todayISO() }]; saveJobs();
+    const j = jobs[exJob] = jobs[exJob] || {}, item = { id: uid(), title: title || 'Expense', amount, date: todayISO() }, up = exFor !== 'first' && (j.upsells || []).find(x => x.id === exFor);
+    if (up) { up.costs = [...upCostsOf(up), item]; delete up.cost; } else j.costs = [...(j.costs || []), item];
+    saveJobs();
     logMsg(exJob, 'note', '🧾 Expense: ' + (title || 'Expense') + ' ' + money0(amount) + '. Estimated pay now ' + money0(jobNet(j).net) + '.');
     $('#exBg').classList.remove('open'); render(); toast('Expense added');
     if (receipt) setTimeout(() => $('#fCam').click(), 300);
@@ -709,7 +715,7 @@
     el.value = (int ? Number(int).toLocaleString('en-US') : '') + dec;
   }, true);
   const leadPctOf = j => (j && j.leadPct !== undefined && j.leadPct !== '' && j.leadPct !== null) ? +j.leadPct : cfg.leadFirst;
-  const repsOf = j => Array.isArray(j && j.repNames) ? 1 + noPartners(j.repNames).length : Math.max(1, Math.min(10, parseInt(j && j.reps, 10) || 1));
+  const repsOf = j => Array.isArray(j && j.repNames) ? 1 + j.repNames.length : Math.max(1, Math.min(10, parseInt(j && j.reps, 10) || 1));
   // Every sale (the first one and each upsell) works the same way: amount - lead cost - expenses = profit, then your share divided by the reps on it.
   const upCostsOf = u => Array.isArray(u.costs) ? u.costs : (u.cost ? [{ id: 'c0', title: 'Expenses', amount: u.cost }] : []);
   function saleCalc(s) {
@@ -719,15 +725,15 @@
   function salesOf(j) {
     const out = [], who = OWNER || 'Owner';
     if (j.contract) {
-      if (!asRep) { if (!j.seller) out.push(saleCalc({ key: 'first', kind: 'first', title: 'Prime contract', amount: j.contract, leadPct: leadPctOf(j), costs: j.costs || [], reps: noPartners(j.repNames), date: soldDay(j) })); }
+      if (!asRep) { if (!j.seller) out.push(saleCalc({ key: 'first', kind: 'first', title: 'Prime contract', amount: j.contract, leadPct: leadPctOf(j), costs: j.costs || [], reps: j.repNames || [], date: soldDay(j) })); }
       else {
         // a rep's view: the people sharing the first sale are the seller and the other reps (or you and the reps, if you sold it)
-        const names = j.seller ? jobReps(j) : noPartners(j.repNames);
+        const names = j.seller ? [...new Set([j.seller, ...(j.repNames || [])])] : (j.repNames || []);
         if (names.includes(asRep)) out.push(saleCalc({ key: 'first', kind: 'first', title: 'Prime contract', amount: j.contract, leadPct: leadPctOf(j), costs: j.costs || [], reps: [...names.filter(x => x !== asRep), ...(j.seller ? [] : [who])], date: soldDay(j) }));
       }
     }
     (j.upsells || []).forEach(u => {
-      const names = noPartners(u.repNames);
+      const names = u.repNames || [];
       if (asRep && !names.includes(asRep)) return;
       out.push(saleCalc({ key: u.id, kind: 'upsell', title: u.title || 'Upsell', amount: u.amount || 0, leadPct: u.leadPct !== undefined && u.leadPct !== '' && u.leadPct !== null ? +u.leadPct : cfg.leadUp, costs: upCostsOf(u), reps: asRep ? [who, ...names.filter(x => x !== asRep)] : names, date: u.wonAt || u.at || '' }));
     });
@@ -1210,8 +1216,9 @@
         <button data-act="addmember"><i>＋</i>Add</button>
         <button data-act="search"><i>🔍</i>Search</button></div>
       ${(() => { const mm = jobNet(j); return `<button class="moneycard" data-act="moneyjob" data-p="${esc(n)}">${j.contract ? `<span class="mcl">Contract <b>${money0(j.contract)}</b></span><span class="mcr">You keep <b>${money0(mm.net)}</b></span><small>${j.seller && !asRep ? 'Sold by ' + esc(jobReps(j).join(' + ')) + ' · your ' + cfg.override + '% override' : money0(mm.lead) + ' lead cost · ' + money0(mm.costs) + ' expenses' + (mm.reps > 1 ? ' · split ' + mm.reps + ' ways' : '')} · tap to edit</small>` : '<span class="mcl"><b>💵 Add the contract amount</b></span><small>See what you keep after lead cost and expenses</small>'}</button>`; })()}
+      <div class="quickrow"><button data-act="qexp"><i>🧾</i>Add expense<small>${(() => { const mm = jobNet(j); return mm.costs ? money0(mm.costs) + ' so far' : 'none yet'; })()}</small></button><button data-act="qup"><i>⬆️</i>Add upsell</button></div>
       <div class="scard whocard"><button class="srow" data-act="soldby"><span class="sico">👤</span><span class="slbl"><b>Sold by</b><small>${j.seller ? 'The rep who sold it. You get ' + cfg.override + '%' : 'Tap to choose the rep who sold it'}</small></span><span class="sval"><b>${esc(j.seller || (asRep ? asRep : 'Me'))}</b></span><span class="schev">›</span></button>
-        <button class="srow" data-act="alsoreps"><span class="sico">👥</span><span class="slbl"><b>Also on this file</b><small>Other reps on the sale (Kay and Ilan are always in)</small></span><span class="sval">${esc(noPartners(j.repNames).join(', ') || 'None')}</span><span class="schev">›</span></button></div>
+        <button class="srow" data-act="alsoreps"><span class="sico">👥</span><span class="slbl"><b>Also on this file</b><small>Anyone sharing this sale with you, Kay included</small></span><span class="sval">${esc((j.repNames || []).join(', ') || 'None')}</span><span class="schev">›</span></button></div>
       <div class="ssec">Media</div><div class="scard">
         ${srow('🖼️', 'Media, links and docs', media.length + links, 'jtab', 'data-tab="media"')}
         ${srow('⭐', 'Starred messages', starred, 'jtab', 'data-tab="starred"')}
@@ -2253,6 +2260,8 @@
       }
       if (act === 'older') { chatLimit += 300; const h0 = document.body.scrollHeight; render(); window.scrollTo(0, 0); return; }
       if (act === 'mper') { moneyPer = el.dataset.t; return render(); }
+      if (act === 'qexp') return openExpense(curJob);
+      if (act === 'qup') { dealJob = curJob; return openDl('upsell'); }
       if (act === 'soldby') {
         const j = jobs[curJob] = jobs[curJob] || {};
         const set = nm => { j.seller = nm; if (nm) j.repNames = noPartners(j.repNames).filter(x => x !== nm); if (!j.repNames || !j.repNames.length) delete j.repNames; syncMembers(j); saveJobs(); render(); toast(nm ? nm + ' sold it. You get ' + cfg.override + '% of the contract.' : 'Marked as sold by you'); };
@@ -2261,8 +2270,8 @@
       if (act === 'alsoreps') {
         const j = jobs[curJob] = jobs[curJob] || {};
         const open = () => {
-          const cur = noPartners(j.repNames), toggle = nm => { j.repNames = cur.includes(nm) ? cur.filter(x => x !== nm) : [...cur, nm]; if (!j.repNames.length) delete j.repNames; syncMembers(j); saveJobs(); render(); open(); };
-          openPick('Other reps on this file. Tap to add or remove', [...repTeam().filter(x => x.name !== j.seller).map(x => ({ label: (cur.includes(x.name) ? '✓ ' : '＋ ') + label2(x), fn: () => toggle(x.name) })), { label: 'Done', fn: () => toast(noPartners(j.repNames).length ? noPartners(j.repNames).join(' + ') + ' on this file' + (j.seller ? '. Your ' + cfg.override + '% is split between ' + jobReps(j).join(' + ') + '.' : '.') : 'No other reps') }]);
+          const cur = (j.repNames || []).slice(), toggle = nm => { j.repNames = cur.includes(nm) ? cur.filter(x => x !== nm) : [...cur, nm]; if (!j.repNames.length) delete j.repNames; syncMembers(j); saveJobs(); render(); open(); };
+          openPick('Also on this file. Tap to add or remove', [...team.filter(x => x.name !== OWNER && x.name !== j.seller).map(x => ({ label: (cur.includes(x.name) ? '✓ ' : '＋ ') + label2(x), fn: () => toggle(x.name) })), { label: 'Done', fn: () => toast((j.repNames || []).length ? (j.repNames || []).join(' + ') + ' on this file. Your share is split ' + (1 + (j.repNames || []).length) + ' ways' + (j.seller ? '' : ' with you') + '.' : 'Nobody else on this file') }]);
         };
         return open();
       }
