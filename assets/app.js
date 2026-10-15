@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '64';
+  const APP_VERSION = '65';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -1380,7 +1380,11 @@
   function initMap() {
     const box = document.getElementById('jmap'); if (!box) return;
     if (lmap) { try { lmap.remove(); } catch {} lmap = null; }
-    if (!window.L) { box.innerHTML = '<div class="empty small"><div class="big">🗺️</div>The map needs an internet connection to load.</div>'; return; }
+    if (!window.L) {
+      box.innerHTML = '<div class="empty small"><div class="big">🗺️</div>Loading the map…</div>';
+      ensureMapLibs().then(() => { if (view === 'map') initMap(); }).catch(() => { box.innerHTML = '<div class="empty small"><div class="big">🗺️</div>The map needs an internet connection to load. Try again in a moment.</div>'; });
+      return;
+    }
     lmap = L.map(box, { zoomControl: true, attributionControl: true });
     if (mapView) lmap.setView(mapView.c, mapView.z, { animate: false }); else lmap.fitBounds(SOCAL);
     lmap.on('moveend', () => { if (lmap) mapView = { c: lmap.getCenter(), z: lmap.getZoom() }; });
@@ -1393,6 +1397,17 @@
     lmap.on('popupopen', ev => { fillDrive(ev.popup.getElement()); ev.popup.getElement().querySelectorAll('[data-act]').forEach(b => { b.onclick = () => { mapAct(b.dataset.act, b); }; }); });
     drawPins(); mapStatus(); geocodeMissing();
     setTimeout(() => lmap && lmap.invalidateSize(), 150);
+  }
+  let mapLibsP = null;
+  function ensureMapLibs() {
+    if (window.L && window.maplibregl && L.maplibreGL) return Promise.resolve();
+    const css = href => { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href; document.head.appendChild(l); };
+    const js = src => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+    return mapLibsP || (mapLibsP = (async () => {
+      css('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'); css('https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css');
+      await js('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js');
+      try { await js('https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js'); await js('https://cdn.jsdelivr.net/npm/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js'); } catch {}
+    })().catch(e => { mapLibsP = null; throw e; }));
   }
   function destroyMap() { if (lmap) { try { lmap.remove(); } catch {} lmap = null; } if (view !== 'map') { mapView = null; cmpSel = []; } }
   function dayList() {
