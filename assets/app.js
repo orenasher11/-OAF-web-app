@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '74';
+  const APP_VERSION = '75';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -369,7 +369,7 @@
     const n = dealJob, j = jobs[n] = jobs[n] || {}, m = jobNet(j), sm = finSummary(j);
     $('#h1').textContent = j.addr || n; $('#sub').textContent = 'Money for this job';
     const cards = m.sales.map(s => `<button class="upcard sale ${s.kind}" data-act="dealsale" data-id="${esc(s.key)}"><div class="uph"><div><b>${esc(s.title)}${s.kind === 'first' ? ' (first sale)' : ''}</b><small>${money0(s.amount)} − lead ${money0(s.lead)} (${+s.leadPct.toFixed(2)}%) − expenses ${money0(s.cost)} = ${sgn(s.profit)} profit</small><small>${s.k > 1 ? 'With ' + esc(s.reps.join(', ')) + ' · each gets ' + +s.pct.toFixed(2) + '%' : 'Just you · ' + +s.pct.toFixed(2) + '%'}</small></div><div class="upyou"><small>You get</small><b>${money0(s.share)}</b></div></div></button>`).join('');
-    const repSold = !asRep && j.seller && j.contract ? `<button class="upcard sale first" data-act="dealsale" data-id="first"><div class="uph"><div><b>Prime contract · sold by ${esc(j.seller)}</b><small>${money0(j.contract)} · your ${cfg.override}% override</small></div><div class="upyou"><small>You get</small><b>${money0(m.over)}</b></div></div></button>` : '';
+    const repSold = !asRep && j.seller && j.contract ? `<button class="upcard sale first" data-act="dealsale" data-id="first"><div class="uph"><div><b>Prime contract · sold by ${esc(jobReps(j).join(' + '))}</b><small>${money0(j.contract)} · your ${cfg.override}% override${jobReps(j).length > 1 ? ', paid once for the whole file' : ''}</small></div><div class="upyou"><small>You get</small><b>${money0(m.over)}</b></div></div></button>` : '';
     const empty = !j.contract ? `<div class="bigact"><button class="jbtn primary wide" data-act="dealcontract">＋ Add the first sale</button><button class="jbtn wide" data-act="dealpdf">📄 Read it from the contract PDF</button><div class="hint">Or type <b>sold 54686</b> in the job chat.</div></div>` : '';
     const room = sm.approved ? `<div class="hint">💡 Approved up to <b>${money0(sm.approved)}</b>. Room left to upsell: <b>${money0(sm.room)}</b></div>` : '';
     return `<div class="bigcard"><div class="bl">You keep on this job</div><div class="bn">${money0(m.net)}</div><div class="bs">${m.sales.length + (repSold ? 1 : 0)} ${m.sales.length + (repSold ? 1 : 0) === 1 ? 'sale' : 'sales'} added together · profit ${sgn(m.profit)}</div></div>
@@ -404,7 +404,7 @@
     dlReps = first ? (j.repNames || []).slice() : (u ? (u.repNames || []).slice() : []); paintDlReps();
     $('#dlChips').innerHTML = UP_IDEAS.map(t => `<button type="button" class="chip" data-t="${t}">${t}</button>`).join('');
     $('#dl-date').value = j.soldOn || todayISO();
-    $('#dl-seller').innerHTML = (asRep ? `<option value="${esc(asRep)}" selected>${esc(asRep)} (sold it)</option>` : '<option value="">Me (you sold it)</option>') + team.filter(x => x.name !== asRep).map(x => `<option ${j.seller === x.name ? 'selected' : ''}>${esc(x.name)}</option>`).join('') + (j.seller && !team.some(x => x.name === j.seller) ? `<option selected>${esc(j.seller)}</option>` : '');
+    $('#dl-seller').innerHTML = (asRep ? `<option value="${esc(asRep)}" selected>${esc(asRep)} (sold it)</option>` : '<option value="">Me (you sold it)</option>') + team.filter(x => x.name !== asRep).map(x => `<option ${j.seller === x.name ? 'selected' : ''}>${esc(x.name)}</option>`).join('') + (j.seller && !team.some(x => x.name === j.seller) ? `<option selected>${esc(jobReps(j).join(' + '))}</option>` : '');
     dlPreview(); $('#dlBg').classList.add('open'); setTimeout(() => $(!first && !u ? '#dl-title' : '#dl-amt').focus(), 250);
   }
   $('#dlChips').onclick = e => { const c = e.target.closest('[data-t]'); if (c) { $('#dl-title').value = c.dataset.t; $('#dl-amt').focus(); } };
@@ -718,7 +718,7 @@
   }
   function salesOf(j) {
     const out = [];
-    if (j.contract && (asRep ? j.seller === asRep : !j.seller)) out.push(saleCalc({ key: 'first', kind: 'first', title: 'Prime contract', amount: j.contract, leadPct: leadPctOf(j), costs: j.costs || [], reps: j.repNames || [], date: j.soldOn || '' }));
+    if (j.contract && (asRep ? repOn(j, asRep) : !j.seller)) out.push(saleCalc({ key: 'first', kind: 'first', title: 'Prime contract', amount: j.contract, leadPct: leadPctOf(j), costs: j.costs || [], reps: asRep ? jobReps(j).filter(x => x !== asRep) : (j.repNames || []), date: j.soldOn || '' }));
     (j.upsells || []).forEach(u => out.push(saleCalc({ key: u.id, kind: 'upsell', title: u.title || 'Upsell', amount: u.amount || 0, leadPct: u.leadPct !== undefined && u.leadPct !== '' && u.leadPct !== null ? +u.leadPct : cfg.leadUp, costs: upCostsOf(u), reps: u.repNames || [], date: u.wonAt || u.at || '' })));
     return out;
   }
@@ -748,7 +748,7 @@
     const list = Object.entries(jobs).filter(([, j]) => j && (j.contract || (j.upsells || []).length)).sort((a, b) => String(b[1].soldOn || '').localeCompare(String(a[1].soldOn || '')));
     const noCon = Object.entries(jobs).filter(([, j]) => j && !j.contract && !(j.upsells || []).length);
     const jr = ([n, j]) => { const ups = j.upsells || [], won = ups.reduce((a, u) => a + (u.amount || 0), 0), off = 0;
-      return `<button class="srow" data-act="moneyjob" data-p="${esc(n)}"><span class="sico">💼</span><span class="slbl"><b>${esc(j.addr || n)}</b><small>${esc(n)}${j.seller ? ' · sold by ' + esc(j.seller) : ''}${won ? ' · ' + money0(won) + ' upsell won' : ''}${off ? ' · ' + money0(off) + ' offered' : ''}${(j.repNames || []).length ? ' · with ' + esc(j.repNames.join(', ')) : ''}${j.contract ? ' · you keep ' + money0(jobNet(j).net) : ''}</small></span><span class="sval">${j.contract ? money0(j.contract) : 'Add $'}</span><span class="schev">›</span></button>`; };
+      return `<button class="srow" data-act="moneyjob" data-p="${esc(n)}"><span class="sico">💼</span><span class="slbl"><b>${esc(j.addr || n)}</b><small>${esc(n)}${j.seller ? ' · sold by ' + esc(jobReps(j).join(' + ')) : ''}${won ? ' · ' + money0(won) + ' upsell won' : ''}${off ? ' · ' + money0(off) + ' offered' : ''}${(j.repNames || []).length ? ' · with ' + esc(j.repNames.join(', ')) : ''}${j.contract ? ' · you keep ' + money0(jobNet(j).net) : ''}</small></span><span class="sval">${j.contract ? money0(j.contract) : 'Add $'}</span><span class="schev">›</span></button>`; };
     return `<div class="seg">${seg('month', 'This month')}${seg('last', 'Last month')}${seg('year', 'This year')}</div>
       <div class="bigcard"><div class="bl">You keep</div><div class="bn">${money0(e.net)}</div><div class="bs">${money0(e.revenue)} sales − ${money0(e.lead)} lead cost − ${money0(e.costs)} expenses = ${money0(e.profit)} profit<br>Your share (${cfg.split}%, divided when reps share a file) ${money0(e.share)}${e.over ? ' + ' + money0(e.over) + ' overrides' : ''}<br>${e.deals} ${e.deals === 1 ? 'job' : 'jobs'} sold · ${money0(e.contracts)} in contracts</div></div>
       <div class="scard">
@@ -1109,6 +1109,9 @@
   function backTab() { jobTab = tabHist.pop() || 'chat'; chatSearch = false; render(); if (jobTab !== 'chat') window.scrollTo(0, 0); }
   function defaultGroupPhones(j) { return getSubs(j).filter(x => hasPhone(x.phone)).map(x => cleanPhone(x.phone)); }
   // A job's group has only the people you added to it (plus the rep who sold it and reps on its sales). Subs are listed separately.
+  // reps on a rep-sold file: the one who sold it plus the others you add. Your override is paid once per file, so it is split between them on each rep's board.
+  const jobReps = j => (j && j.seller) ? [...new Set([j.seller, ...(j.repNames || [])])] : [];
+  const repOn = (j, rep) => jobReps(j).includes(rep);
   const defaultMemberIds = j => { const names = new Set([j.seller, ...(j.repNames || []), ...(j.upsells || []).flatMap(u => u.repNames || [])].filter(Boolean)); return team.filter(x => names.has(x.name)).map(x => x.id); };
   const memberIds = j => Array.isArray(j.members) ? j.members : defaultMemberIds(j);
   function membersOf(n) { const j = jobs[n] || {}, ids = memberIds(j); return team.filter(x => ids.includes(x.id)).map(x => ({ ...x, kind: 'team' })); }
@@ -1181,13 +1184,13 @@
         <button data-act="${j.addr ? 'navjob' : 'editjobd'}"><i>🧭</i>Navigate</button>
         <button data-act="addmember"><i>＋</i>Add</button>
         <button data-act="search"><i>🔍</i>Search</button></div>
-      ${(() => { const mm = jobNet(j); return `<button class="moneycard" data-act="moneyjob" data-p="${esc(n)}">${j.contract ? `<span class="mcl">Contract <b>${money0(j.contract)}</b></span><span class="mcr">You keep <b>${money0(mm.net)}</b></span><small>${j.seller && !asRep ? 'Sold by ' + esc(j.seller) + ' · your ' + cfg.override + '% override' : money0(mm.lead) + ' lead cost · ' + money0(mm.costs) + ' expenses' + (mm.reps > 1 ? ' · split ' + mm.reps + ' ways' : '')} · tap to edit</small>` : '<span class="mcl"><b>💵 Add the contract amount</b></span><small>See what you keep after lead cost and expenses</small>'}</button>`; })()}
+      ${(() => { const mm = jobNet(j); return `<button class="moneycard" data-act="moneyjob" data-p="${esc(n)}">${j.contract ? `<span class="mcl">Contract <b>${money0(j.contract)}</b></span><span class="mcr">You keep <b>${money0(mm.net)}</b></span><small>${j.seller && !asRep ? 'Sold by ' + esc(jobReps(j).join(' + ')) + ' · your ' + cfg.override + '% override' : money0(mm.lead) + ' lead cost · ' + money0(mm.costs) + ' expenses' + (mm.reps > 1 ? ' · split ' + mm.reps + ' ways' : '')} · tap to edit</small>` : '<span class="mcl"><b>💵 Add the contract amount</b></span><small>See what you keep after lead cost and expenses</small>'}</button>`; })()}
       <div class="ssec">Media</div><div class="scard">
         ${srow('🖼️', 'Media, links and docs', media.length + links, 'jtab', 'data-tab="media"')}
         ${srow('⭐', 'Starred messages', starred, 'jtab', 'data-tab="starred"')}
         ${srow('✅', 'To-do &amp; checklists', openN ? openN + ' open' : '✓', 'jtab', 'data-tab="tasks"')}
         ${srow('📍', 'Job stages', getStages(j).length ? esc(getStages(j).join(' + ')) : 'Set', 'stagepick')}
-        ${srow('👤', 'Sold by', esc(j.seller || (asRep ? asRep : 'Me')), 'soldby')}
+        ${srow('👤', 'Sold by', esc(jobReps(j).join(' + ') || (asRep ? asRep : 'Me')), 'soldby')}
         ${srow('💵', 'Contract &amp; upsells', j.contract ? money0(j.contract) : 'Add', 'moneyjob', `data-p="${esc(n)}"`)}
         ${srow('📝', 'Job summary', '', 'summary')}</div>
       <div class="ssec">Financing</div><div class="scard">
@@ -1318,7 +1321,7 @@
   const milesBetween = (a, b) => { const R = 3958.8, r = x => x * Math.PI / 180, dLa = r(b.lat - a.lat), dLo = r(b.lng - a.lng), h = Math.sin(dLa / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLo / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
   function mapItems() {
     const out = [];
-    Object.keys(jobs).filter(n => jobs[n] && !jobs[n].archived && !jobs[n].demo && jobs[n].addr && (!asRep || jobs[n].seller === asRep)).forEach(n => { const j = jobs[n], i = stageIdx(j); out.push({ k: 'job:' + n, kind: 'job', key: n, title: j.addr, sub: n, addr: j.addr, rec: j, save: saveJobs, color: i >= 0 ? SCOL[i] : '#94a3b8' }); });
+    Object.keys(jobs).filter(n => jobs[n] && !jobs[n].archived && !jobs[n].demo && jobs[n].addr && (!asRep || repOn(jobs[n], asRep))).forEach(n => { const j = jobs[n], i = stageIdx(j); out.push({ k: 'job:' + n, kind: 'job', key: n, title: j.addr, sub: n, addr: j.addr, rec: j, save: saveJobs, color: i >= 0 ? SCOL[i] : '#94a3b8' }); });
     leads.filter(l => isOpenLead(l) && l.addr && (!asRep || l.rep === asRep)).forEach(l => out.push({ k: 'lead:' + l.id, kind: 'lead', key: l.id, title: l.name || l.addr, sub: l.addr, addr: l.addr, rec: l, save: saveLeads, color: '#f59e0b' }));
     return out;
   }
@@ -1467,8 +1470,8 @@
 
   // ---- my reps: table, then one rep's jobs, map and what you earn from them ----
   let repName = '', repMap = null;
-  const repNames = () => { const s = new Set(team.map(x => x.name).filter(n => n && n !== OWNER)); Object.values(jobs).forEach(j => { if (j && j.seller && !j.demo) s.add(j.seller); }); return [...s].sort((x, y) => x.localeCompare(y)); };
-  const repJobs = rep => Object.entries(jobs).filter(([, j]) => j && !j.demo && j.seller === rep);
+  const repNames = () => { const s = new Set(team.map(x => x.name).filter(n => n && n !== OWNER)); Object.values(jobs).forEach(j => { if (j && !j.demo) jobReps(j).forEach(x => s.add(x)); }); return [...s].sort((x, y) => x.localeCompare(y)); };
+  const repJobs = rep => Object.entries(jobs).filter(([, j]) => j && !j.demo && repOn(j, rep));
   function lastAct(j) {
     const t = x => { const v = x ? new Date(x).getTime() : 0; return isNaN(v) ? 0 : v; };
     return Math.max(...(j.chat || []).map(m => t(m.at)), t(j.stageAt), t(j.soldOn && j.soldOn + 'T12:00:00'), t(j.last && j.last + 'T12:00:00'), 0);
@@ -1480,7 +1483,7 @@
     repJobs(rep).forEach(([, j]) => {
       o.total++;
       if (!j.archived) { o.open++; const d = agoDays(lastAct(j)); if (d === null || d >= 7) o.quiet++; }
-      if (j.contract) { const m = j.contract * cfg.override / 100; o.life += m; if (inR(j.soldOn, range)) { o.deals++; o.sold += j.contract; o.mine += m; } }
+      if (j.contract) { const n = Math.max(1, jobReps(j).length), m = j.contract * cfg.override / 100 / n; o.life += m; if (inR(j.soldOn, range)) { o.deals++; o.sold += j.contract / n; o.mine += m; } }
     });
     return o;
   }
@@ -1502,10 +1505,10 @@
     $('#h1').textContent = nm; $('#sub').textContent = 'Jobs and what you earn from this rep';
     const seg = (k, l) => `<button class="${moneyPer === k ? 'on' : ''}" data-act="mper" data-t="${k}">${l}</button>`;
     const rows = repJobs(nm).map(([n, j]) => ({ n, j, d: agoDays(lastAct(j)) })), open = rows.filter(r => !r.j.archived).sort((a, b) => (b.d === null ? 999 : b.d) - (a.d === null ? 999 : a.d)), done = rows.filter(r => r.j.archived);
-    const card = r => { const g = getStages(r.j), i = stageIdx(r.j), mine = (r.j.contract || 0) * cfg.override / 100, quiet = !r.j.archived && (r.d === null || r.d >= 7);
+    const card = r => { const g = getStages(r.j), i = stageIdx(r.j), nr = Math.max(1, jobReps(r.j).length), mine = (r.j.contract || 0) * cfg.override / 100 / nr, quiet = !r.j.archived && (r.d === null || r.d >= 7);
       return `<button class="repjob" data-act="openjob" data-p="${esc(r.n)}"><span class="rjtop"><b>${esc(r.j.addr || r.n)}</b><span class="rjmoney">${r.j.contract ? money0(r.j.contract) : 'No contract'}</span></span>
         <span class="rjmid"><span class="stg" style="--c:${i >= 0 ? SCOL[i] : '#94a3b8'}">${g.length ? esc(g.length <= 2 ? g.join(' + ') : g[0] + ' + ' + (g.length - 1) + ' more') : 'No stage yet'}</span><span class="${quiet ? 'red' : 'muted'}">${agoTxt(r.d)}</span></span>
-        <span class="rjmid"><span class="muted">${esc(r.n)}</span><span class="rjmine">${r.j.contract ? 'You get ' + money0(mine) : ''}</span></span></button>`; };
+        <span class="rjmid"><span class="muted">${esc(r.n)}${nr > 1 ? ' · with ' + esc(jobReps(r.j).filter(x => x !== nm).join(', ')) : ''}</span><span class="rjmine">${r.j.contract ? 'You get ' + money0(mine) + (nr > 1 ? ' (1% ÷ ' + nr + ')' : '') : ''}</span></span></button>`; };
     const ph = (team.find(x => x.name === nm) || {}).phone;
     return `<div class="seg">${seg('month', 'This month')}${seg('last', 'Last month')}${seg('year', 'This year')}</div>
       <div class="bigcard"><div class="bl">You earn from ${esc(nm)} ${per}</div><div class="bn">${money0(s.mine)}</div><div class="bs">${s.deals} ${s.deals === 1 ? 'job' : 'jobs'} sold · ${money0(s.sold)} in contracts<br>All time: ${money0(s.life)} · ${s.open} open ${s.open === 1 ? 'job' : 'jobs'}${s.quiet ? ' · ' + s.quiet + ' quiet' : ''}</div></div>
@@ -1523,7 +1526,7 @@
       return;
     }
     box.innerHTML = ''; repMap = L.map(box, { zoomControl: true }); addBaseLayer(repMap);
-    const layer = L.layerGroup().addTo(repMap), mine = () => mapItems().filter(i => i.kind === 'job' && (jobs[i.key] || {}).seller === repName);
+    const layer = L.layerGroup().addTo(repMap), mine = () => mapItems().filter(i => i.kind === 'job' && repOn(jobs[i.key] || {}, repName));
     const draw = () => {
       if (!repMap) return; layer.clearLayers(); const pts = [];
       mine().filter(mapPlaced).forEach(it => {
@@ -1543,7 +1546,7 @@
   function paintAsBar() { const b = $('#asbar'); if (!b) return; b.hidden = !asRep; if (asRep) $('#asName').textContent = asRep; }
   function render() {
     if (!asRep) { renderCore(); paintAsBar(); return; }
-    const J = jobs, T = tasks, L = leads, jr = Object.fromEntries(Object.entries(J).filter(([, j]) => j && j.seller === asRep));
+    const J = jobs, T = tasks, L = leads, jr = Object.fromEntries(Object.entries(J).filter(([, j]) => j && repOn(j, asRep)));
     jobs = jr; tasks = T.filter(t => t.project && jr[t.project]); leads = L.filter(l => l.rep === asRep); swapping = true;
     try { renderCore(); } finally { jobs = J; tasks = T; leads = L; swapping = false; }
     paintAsBar();
@@ -2224,8 +2227,18 @@
       }
       if (act === 'older') { chatLimit += 300; const h0 = document.body.scrollHeight; render(); window.scrollTo(0, 0); return; }
       if (act === 'mper') { moneyPer = el.dataset.t; return render(); }
-      if (act === 'soldby') { const j = jobs[curJob] = jobs[curJob] || {}, set = nm => { j.seller = nm; syncMembers(j); saveJobs(); render(); toast(nm ? nm + ' sold it. You get ' + cfg.override + '% of the contract.' : 'Marked as sold by you'); };
-        return openPick('Who sold this job?', [{ label: (j.seller ? '' : '✓ ') + 'Me (I sold it)', fn: () => set('') }, ...team.filter(x => x.name !== OWNER).map(x => ({ label: (j.seller === x.name ? '✓ ' : '') + label2(x), fn: () => set(x.name) }))]); }
+      if (act === 'soldby') {
+        const j = jobs[curJob] = jobs[curJob] || {};
+        const open = () => {
+          const reps = jobReps(j), toggle = nm => {
+            if (reps.includes(nm)) { if (j.seller === nm) { const rest = (j.repNames || []).filter(x => x !== nm); j.seller = rest[0] || ''; j.repNames = rest.slice(1); } else j.repNames = (j.repNames || []).filter(x => x !== nm); }
+            else if (!j.seller && !(j.repNames || []).length) j.seller = nm; else j.repNames = [...(j.repNames || []), nm];
+            if (!j.repNames || !j.repNames.length) delete j.repNames; syncMembers(j); saveJobs(); render(); open();
+          };
+          openPick('Who is on this file? Tap to add or remove', [...team.filter(x => x.name !== OWNER).map(x => ({ label: (reps.includes(x.name) ? '✓ ' : '＋ ') + label2(x), fn: () => toggle(x.name) })), { label: 'Me (I sold it myself)', fn: () => { j.seller = ''; delete j.repNames; saveJobs(); render(); toast('Marked as sold by you'); } }, { label: 'Done', fn: () => toast(jobReps(j).length ? jobReps(j).join(' + ') + (jobReps(j).length > 1 ? ' are on this file. Your ' + cfg.override + '% is split between them.' : ' sold it. You get ' + cfg.override + '% of the contract.') : 'Sold by you') }]);
+        };
+        return open();
+      }
       if (act === 'moneyjob') return openMoney(el.dataset.p || curJob);
       if (act === 'cfgedit') return openCfg();
       if (act === 'demoload') return loadDemo();
