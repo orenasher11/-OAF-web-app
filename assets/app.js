@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '61';
+  const APP_VERSION = '62';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -51,7 +51,7 @@
   function finSummary(j) {
     j = j || {}; const fins = getFins(j), fin2 = fins.filter(f => f.company !== 'Cash');
     const approved = fin2.reduce((a, f) => a + (f.approved || 0), 0), amounts = fins.reduce((a, f) => a + (f.amount || 0), 0);
-    const ups = j.upsells || [], wonUp = ups.filter(u => u.status === 'won').reduce((a, u) => a + u.amount, 0), offered = ups.filter(u => u.status === 'offered').reduce((a, u) => a + u.amount, 0);
+    const ups = j.upsells || [], wonUp = ups.reduce((a, u) => a + (u.amount || 0), 0), offered = 0;
     const used = approved ? Math.max(amounts, (j.contract || 0) + wonUp) : amounts, room = approved ? Math.max(0, approved - used) : 0;
     return { fins, approved, amounts, used, room, offered, wonUp, toPitch: Math.max(0, room - offered) };
   }
@@ -357,56 +357,54 @@
     paintTodoBar();
     $('#apVia').lastChild.textContent = sendVia === 'wa' ? 'Sending via WhatsApp' : 'Sending via Messages';
   }
-  // ---- job money page ("deal"): contract, upsells, expenses, split, what you keep ----
-  let dealJob = '', dealFrom = 'job', dlMode = '', dlId = '', dlStatus = 'offered';
+  // ---- job money page ("deal"): prime contract, upsells (each on its own), what you keep ----
+  let dealJob = '', dealFrom = 'job', dlMode = '', dlId = '', dlReps = [];
   const UP_IDEAS = ['Turf', 'Pavers', 'Patio', 'Lighting', 'Fence', 'Other'];
   function openDeal(n) { dealFrom = view === 'job' ? 'job' : (view === 'deal' ? dealFrom : view); dealJob = n; view = 'deal'; render(); window.scrollTo(0, 0); }
+  const teamNames = extra => [...new Set([...team.map(x => x.name).filter(x => x && x !== OWNER), ...(extra || [])])];
   function screenDeal() {
-    const n = dealJob, j = jobs[n] = jobs[n] || {}, m = jobNet(j), ups = j.upsells || [], costs = j.costs || [], sm = finSummary(j), own = !j.seller;
+    const n = dealJob, j = jobs[n] = jobs[n] || {}, m = jobNet(j), costs = j.costs || [], sm = finSummary(j), own = !j.seller;
     $('#h1').textContent = j.addr || n; $('#sub').textContent = 'Money for this job';
     const sgn = v => (v < 0 ? '−' : '') + money0(Math.abs(v)), row = (l, v, cls = '', s = '') => `<div class="wrow ${cls}"><span>${l}${s ? `<small>${s}</small>` : ''}</span><b>${v}</b></div>`;
-    const upWon = ups.filter(u => u.status === 'won').reduce((s, u) => s + u.amount, 0);
-    const top = `<div class="bigcard"><div class="bl">You keep on this job</div><div class="bn">${money0(m.net)}</div><div class="bs">${j.contract || upWon ? 'Shown after lead cost, expenses and the split' : 'Add the contract below to see your pay'}</div></div>
-      <div class="scard waterfall">
-        ${own ? row('Prime contract', money0(j.contract || 0)) : row('Contract (rep sold)', money0(j.contract || 0), '', 'Your override is ' + cfg.override + '%')}
-        ${own ? row('+ Upsells won', money0(upWon), upWon ? '' : 'dim') : row('+ Upsells won', money0(upWon), upWon ? '' : 'dim')}
-        ${own || upWon ? row('− Lead cost', sgn(-m.lead), 'neg', own ? (leadPctOf(j) + '% of contract' + (upWon ? ', ' + cfg.leadUp + '% of upsells' : '')) : cfg.leadUp + '% of upsells') : ''}
-        ${row('− Expenses', sgn(-m.costs), 'neg', m.upCosts ? 'includes ' + money0(m.upCosts) + ' on upsells' : '')}
-        ${row('= Profit', sgn(m.profit), 'tot')}
-        ${row('× Your share', +m.pct.toFixed(2) + '%', '', m.reps > 1 ? cfg.split + '% split between ' + m.reps + ' people' : 'Sales side gets ' + cfg.split + '%')}
-        ${m.over ? row('+ Override', money0(m.over)) : ''}
-        ${row('You keep', money0(m.net), 'tot big')}</div>`;
-    const contract = j.contract
-      ? `<button class="dealrow" data-act="dealcontract"><div><b>${money0(j.contract)}</b><small>${j.soldOn ? 'Sold ' + fmtDate(j.soldOn) : 'No sold date'} · ${j.seller ? 'sold by ' + esc(j.seller) : 'sold by you'}</small></div><span>✎ Edit</span></button>`
-      : `<div class="bigact"><button class="jbtn primary wide" data-act="dealcontract">＋ Enter the contract amount</button><button class="jbtn wide" data-act="dealpdf">📄 Read it from the contract PDF</button><div class="hint">Or type <b>sold 54686</b> in the job chat.</div></div>`;
-    const upcards = ups.map(u => { const lead = u.amount * cfg.leadUp / 100, uc = u.cost || 0, yours = (u.amount - lead - uc) * cfg.split / 100 / m.reps;
-      return `<div class="upcard ${u.status}"><div class="uph"><div><b>${esc(u.title || 'Upsell')}</b><small>${u.status === 'won' ? 'Lead −' + money0(lead) + ' · expenses −' + money0(uc) + ' · you +' + money0(yours) : u.status === 'lost' ? 'Lost' : 'Waiting on the customer' + (uc ? ' · expenses ' + money0(uc) + ' count once won' : '')}</small></div><span class="upamt">${money0(u.amount)}</span><button class="upedit" data-act="dealupedit" data-id="${esc(u.id)}" aria-label="Edit">✎</button></div>
-        <div class="upseg">${[['offered', 'Offered'], ['won', 'Won ✓'], ['lost', 'Lost']].map(([k, l]) => `<button class="${u.status === k ? 'on ' + k : ''}" data-act="dealupst" data-id="${esc(u.id)}" data-s="${k}">${l}</button>`).join('')}</div></div>`; }).join('');
-    const roomNote = sm.approved ? `<div class="hint">💡 Approved up to <b>${money0(sm.approved)}</b>. Room left to upsell: <b>${money0(sm.room)}</b></div>` : '';
-    const names = [...new Set([...team.map(x => x.name).filter(x => x && x !== OWNER), ...(j.repNames || [])])];
-    const reps = names.map(nm => `<button type="button" class="chip ${(j.repNames || []).includes(nm) ? 'on' : ''}" data-act="dealrep" data-r="${esc(nm)}">${esc(nm)}</button>`).join('') + '<button type="button" class="chip addsub" data-act="dealrepadd">＋ Add a rep</button>';
-    return top + `<div class="ssec">Prime contract (first sale)</div>${contract}
-      <div class="ssec">Upsells</div>${upcards || '<div class="hint">No upsells yet. Tap the button below or type <b>upsell turf 4500</b> in the job chat.</div>'}${roomNote}
-      <button class="jbtn wide" data-act="dealup">＋ Add an upsell</button>
-      <div class="ssec">Expenses</div>
-      ${costs.length ? `<div class="scard">${costs.map(c => `<div class="srow"><span class="sico">🧾</span><span class="slbl"><b>${esc(c.title || 'Expense')}</b><small>${c.date ? fmtDate(c.date) : ''}</small></span><span class="sval">−${money0(c.amount)}</span><button class="cx" data-act="dealexpdel" data-id="${esc(c.id)}" aria-label="Remove">×</button></div>`).join('')}</div>` : '<div class="hint">No expenses yet. Type <b>expense turf 28000</b> in the job chat.</div>'}
+    const top = `<div class="bigcard"><div class="bl">You keep on this job</div><div class="bn">${money0(m.net)}</div><div class="bs">${own ? 'Prime contract ' + money0(m.cshare) : 'Override ' + money0(m.over)}${m.ups.length ? ' + upsells ' + money0(m.upShare) : ''}</div></div>`;
+    const prime = own ? (j.contract
+      ? `<button class="dealrow" data-act="dealcontract"><div><b>${money0(j.contract)}</b><small>${j.soldOn ? 'Sold ' + fmtDate(j.soldOn) : 'No sold date'} · sold by you</small></div><span>✎ Edit</span></button>
+        <div class="scard waterfall">${row('Prime contract', money0(j.contract))}${row('− Lead cost', sgn(-m.c.lead), 'neg', leadPctOf(j) + '% of the contract')}${row('− Expenses', sgn(-m.c.costs), 'neg')}${row('= Profit', sgn(m.c.profit), 'tot')}${row('× Your share', +m.c.pct.toFixed(2) + '%', '', m.reps > 1 ? cfg.split + '% ÷ ' + m.reps + ' people' : 'Sales side gets ' + cfg.split + '%')}${row('You get', money0(m.c.share), 'tot big')}</div>`
+      : `<div class="bigact"><button class="jbtn primary wide" data-act="dealcontract">＋ Enter the contract amount</button><button class="jbtn wide" data-act="dealpdf">📄 Read it from the contract PDF</button><div class="hint">Or type <b>sold 54686</b> in the job chat.</div></div>`)
+      : `<button class="dealrow" data-act="dealcontract"><div><b>${money0(j.contract || 0)}</b><small>Sold by ${esc(j.seller)} · your ${cfg.override}% override is ${money0(m.over)}</small></div><span>✎ Edit</span></button>`;
+    const exps = own ? `<div class="ssec">Expenses on the prime contract</div>${costs.length ? `<div class="scard">${costs.map(c => `<div class="srow"><span class="sico">🧾</span><span class="slbl"><b>${esc(c.title || 'Expense')}</b><small>${c.date ? fmtDate(c.date) : ''}</small></span><span class="sval">−${money0(c.amount)}</span><button class="cx" data-act="dealexpdel" data-id="${esc(c.id)}" aria-label="Remove">×</button></div>`).join('')}</div>` : '<div class="hint">No expenses yet. Type <b>expense turf 28000</b> in the job chat.</div>'}
       <button class="jbtn wide" data-act="dealexp">＋ Add an expense</button>
-      <div class="ssec">Split with other reps</div><div class="repchips">${reps}</div>
-      <div class="hint">Your ${cfg.split}% is divided between everyone you pick. Lead cost: ${leadPctOf(j)}%${j.leadPct !== undefined ? ' (set for this job)' : ''}. <button class="linkbtn" data-act="deallead">Change for this job</button></div>`;
+      <div class="ssec">Reps on the prime contract</div><div class="repchips">${teamNames(j.repNames).map(nm => `<button type="button" class="chip ${(j.repNames || []).includes(nm) ? 'on' : ''}" data-act="dealrep" data-r="${esc(nm)}">${esc(nm)}</button>`).join('')}<button type="button" class="chip addsub" data-act="dealrepadd">＋ Add a rep</button></div>
+      <div class="hint">Your ${cfg.split}% is divided between everyone you pick. Lead cost ${leadPctOf(j)}%${j.leadPct !== undefined ? ' (set for this job)' : ''}. <button class="linkbtn" data-act="deallead">Change for this job</button></div>` : '';
+    const upcards = m.ups.map(x => `<button class="upcard" data-act="dealupedit" data-id="${esc(x.u.id)}"><div class="uph"><div><b>${esc(x.u.title || 'Upsell')}</b><small>${money0(x.u.amount)} − lead ${money0(x.lead)} (${cfg.leadUp}%) − expenses ${money0(x.cost)} = ${sgn(x.profit)} profit</small><small>${x.k > 1 ? 'With ' + esc(x.u.repNames.join(', ')) + ' · each gets ' + +x.pct.toFixed(2) + '%' : 'Just you · ' + cfg.split + '%'}</small></div><div class="upyou"><small>You get</small><b>${money0(x.share)}</b></div></div></button>`).join('');
+    const roomNote = sm.approved ? `<div class="hint">💡 Approved up to <b>${money0(sm.approved)}</b>. Room left to upsell: <b>${money0(sm.room)}</b></div>` : '';
+    return top + `<div class="ssec">Prime contract (first sale)</div>${prime}
+      <div class="ssec">Upsells${m.ups.length ? ' · you get ' + money0(m.upShare) : ''}</div>${upcards || '<div class="hint">No upsells yet. Tap the button below, or type <b>upsell turf 10000 cost 6000</b> in the job chat.</div>'}${roomNote}
+      <button class="jbtn primary wide" data-act="dealup">＋ Add an upsell</button>${exps}`;
   }
+  function dlPreview() {
+    const v = amt($('#dl-amt').value), c = amt($('#dl-cost').value), lead = v * cfg.leadUp / 100, k = 1 + dlReps.length, profit = v - lead - c, mine = profit * cfg.split / 100 / k;
+    $('#dlPrev').innerHTML = dlMode === 'upsell' ? (v ? `<b>You get ${money0(mine)}</b><br><small>${money0(v)} − ${money0(lead)} lead cost (${cfg.leadUp}%) − ${money0(c)} expenses = ${money0(profit)} profit. ${k > 1 ? 'Each of the ' + k + ' people gets ' : 'Your share is '}${+(cfg.split / k).toFixed(2)}%.</small>` : '') : '';
+  }
+  function paintDlReps() {
+    $('#dlReps').innerHTML = teamNames(dlReps).map(nm => `<button type="button" class="chip ${dlReps.includes(nm) ? 'on' : ''}" data-r="${esc(nm)}">${esc(nm)}</button>`).join('') + '<button type="button" class="chip addsub" data-addrep="1">＋ Add a rep</button>'; dlPreview();
+  }
+  $('#dlReps').onclick = e => {
+    if (e.target.closest('[data-addrep]')) { const nm = (window.prompt('Rep name') || '').trim(); if (nm && !dlReps.includes(nm)) { dlReps.push(nm); paintDlReps(); } return; }
+    const c = e.target.closest('[data-r]'); if (!c) return; const nm = c.dataset.r; dlReps = dlReps.includes(nm) ? dlReps.filter(x => x !== nm) : [...dlReps, nm]; paintDlReps();
+  };
+  ['#dl-amt', '#dl-cost'].forEach(s => $(s).addEventListener('input', dlPreview));
   function openDl(mode, id) {
     dlMode = mode; dlId = id || ''; const j = jobs[dealJob] || {}, u = mode === 'upsell' && id ? (j.upsells || []).find(x => x.id === id) : null;
     $('#dlHead').textContent = mode === 'contract' ? 'Prime contract' : (u ? 'Edit upsell' : 'New upsell');
-    $('#dlTitleWrap').hidden = mode !== 'upsell'; $('#dlCostWrap').hidden = mode !== 'upsell'; $('#dlStatusWrap').hidden = mode !== 'upsell'; $('#dlContractWrap').hidden = mode !== 'contract'; $('#dlDel').hidden = !(mode === 'upsell' && u);
-    $('#dl-title').value = u ? u.title || '' : ''; $('#dl-amt').value = fmtAmt(mode === 'contract' ? j.contract : (u ? u.amount : ''));
-    $('#dl-cost').value = fmtAmt(u && u.cost); dlStatus = u ? u.status : 'offered'; paintDlStatus();
+    ['#dlTitleWrap', '#dlCostWrap', '#dlRepsWrap'].forEach(s => { $(s).hidden = mode !== 'upsell'; }); $('#dlContractWrap').hidden = mode !== 'contract'; $('#dlDel').hidden = !(mode === 'upsell' && u);
+    $('#dl-title').value = u ? u.title || '' : ''; $('#dl-amt').value = fmtAmt(mode === 'contract' ? j.contract : (u ? u.amount : '')); $('#dl-cost').value = fmtAmt(u && u.cost);
+    dlReps = u ? (u.repNames || []).slice() : []; paintDlReps();
     $('#dlChips').innerHTML = UP_IDEAS.map(t => `<button type="button" class="chip" data-t="${t}">${t}</button>`).join('');
     $('#dl-date').value = j.soldOn || todayISO();
     $('#dl-seller').innerHTML = '<option value="">Me (you sold it)</option>' + team.map(x => `<option ${j.seller === x.name ? 'selected' : ''}>${esc(x.name)}</option>`).join('') + (j.seller && !team.some(x => x.name === j.seller) ? `<option selected>${esc(j.seller)}</option>` : '');
     $('#dlBg').classList.add('open'); setTimeout(() => $(mode === 'upsell' && !u ? '#dl-title' : '#dl-amt').focus(), 250);
   }
-  const paintDlStatus = () => { $('#dlStatus').innerHTML = [['offered', 'Offered'], ['won', 'Won ✓'], ['lost', 'Lost']].map(([k, l]) => `<button type="button" class="chip ${dlStatus === k ? 'on' : ''}" data-s="${k}">${l}</button>`).join(''); };
-  $('#dlStatus').onclick = e => { const c = e.target.closest('[data-s]'); if (c) { dlStatus = c.dataset.s; paintDlStatus(); } };
   $('#dlChips').onclick = e => { const c = e.target.closest('[data-t]'); if (c) { $('#dl-title').value = c.dataset.t; $('#dl-amt').focus(); } };
   $('#dlCancel').onclick = () => $('#dlBg').classList.remove('open');
   $('#dlBg').onclick = e => { if (e.target.id === 'dlBg') $('#dlBg').classList.remove('open'); };
@@ -415,10 +413,9 @@
     if (dlMode === 'contract') { j.contract = v; j.soldOn = $('#dl-date').value || j.soldOn || todayISO(); j.seller = $('#dl-seller').value; if (!v) delete j.soldOn; }
     else {
       if (!v) { toast('Enter the amount'); return; }
-      const t = $('#dl-title').value.trim() || 'Upsell', ups = j.upsells = j.upsells || [], u = dlId && ups.find(x => x.id === dlId);
-      const uc = amt($('#dl-cost').value);
-      if (u) { u.title = t; u.amount = v; u.cost = uc; if (dlStatus === 'won' && u.status !== 'won') u.wonAt = todayISO(); u.status = dlStatus; }
-      else ups.push({ id: uid(), title: t, amount: v, cost: uc, status: dlStatus, at: todayISO(), wonAt: dlStatus === 'won' ? todayISO() : '' });
+      const t = $('#dl-title').value.trim() || 'Upsell', ups = j.upsells = j.upsells || [], u = dlId && ups.find(x => x.id === dlId), uc = amt($('#dl-cost').value);
+      if (u) { u.title = t; u.amount = v; u.cost = uc; u.status = 'won'; if (dlReps.length) u.repNames = dlReps.slice(); else delete u.repNames; }
+      else ups.push({ id: uid(), title: t, amount: v, cost: uc, status: 'won', at: todayISO(), wonAt: todayISO(), ...(dlReps.length ? { repNames: dlReps.slice() } : {}) });
     }
     saveJobs(); $('#dlBg').classList.remove('open'); render(); toast('Saved');
   };
@@ -430,7 +427,6 @@
     if (act === 'dealpdf') return $('#dlPdf').click();
     if (act === 'dealup') return openDl('upsell');
     if (act === 'dealupedit') return openDl('upsell', el.dataset.id);
-    if (act === 'dealupst') { const u = (j.upsells || []).find(x => x.id === el.dataset.id); if (!u) return; if (el.dataset.s === 'won' && u.status !== 'won') u.wonAt = todayISO(); u.status = el.dataset.s; saveJobs(); return render(); }
     if (act === 'dealexp') return openExpense(dealJob);
     if (act === 'dealexpdel') { const c = (j.costs || []).find(x => x.id === el.dataset.id); j.costs = (j.costs || []).filter(x => x.id !== el.dataset.id); saveJobs(); render(); return toast('Expense removed', () => { j.costs = [...(j.costs || []), c]; saveJobs(); render(); }); }
     if (act === 'dealrep') { const nm = el.dataset.r, cur = j.repNames || []; j.repNames = cur.includes(nm) ? cur.filter(x => x !== nm) : [...cur, nm]; if (!j.repNames.length) delete j.repNames; saveJobs(); return render(); }
@@ -494,7 +490,7 @@
     const text = $('#chatIn').value.trim();
     const mx = !pending.length && !skipExp && text.match(/^(?:expense|exp|cost)\s+(.+?)\s+\$?([\d,]+(?:\.\d{1,2})?)\s*$/i);
     const mu = !pending.length && !skipExp && text.match(/^(?:upsell|up)\s+(.+?)\s+\$?([\d,]+(?:\.\d{1,2})?)(?:\s+(?:cost|exp|expenses?)\s+\$?([\d,]+(?:\.\d{1,2})?))?\s*$/i), ms = !pending.length && !skipExp && text.match(/^(?:sold|contract)\s+\$?([\d,]+(?:\.\d{1,2})?)\s*$/i);
-    if (mu) { const t1 = mu[1].replace(/^./, c => c.toUpperCase()), v1 = amt(mu[2]), c1 = amt(mu[3] || ''), add = st => { const j = jobs[curJob] = jobs[curJob] || {}; j.upsells = [...(j.upsells || []), { id: uid(), title: t1, amount: v1, cost: c1, status: st, at: todayISO(), wonAt: st === 'won' ? todayISO() : '' }]; saveJobs(); logMsg(curJob, 'note', (st === 'won' ? '🎉 Upsell won: ' : '⬆️ Upsell offered: ') + t1 + ' ' + money0(v1) + '.'); $('#chatIn').value = ''; autoGrow(); render(); toast('Upsell saved'); }; return openPick('Upsell: ' + t1 + ' ' + money0(v1) + (c1 ? ' · expenses ' + money0(c1) : ''), [{ label: '⬆️ Offered, waiting on the customer', fn: () => add('offered') }, { label: '🎉 Won', fn: () => add('won') }, { label: '💬 Send as a message instead', fn: () => { skipExp = true; sendChat(); skipExp = false; } }]); }
+    if (mu) { const t1 = mu[1].replace(/^./, c => c.toUpperCase()), v1 = amt(mu[2]), c1 = amt(mu[3] || ''); return openPick('Add upsell: ' + t1 + ' ' + money0(v1) + (c1 ? ' · expenses ' + money0(c1) : '') + '?', [{ label: '✅ Add the upsell', fn: () => { const j = jobs[curJob] = jobs[curJob] || {}; j.upsells = [...(j.upsells || []), { id: uid(), title: t1, amount: v1, cost: c1, status: 'won', at: todayISO(), wonAt: todayISO() }]; saveJobs(); logMsg(curJob, 'note', '⬆️ Upsell: ' + t1 + ' ' + money0(v1) + '. You get ' + money0(jobNet(j).ups.slice(-1)[0].share) + '.'); $('#chatIn').value = ''; autoGrow(); render(); toast('Upsell added'); } }, { label: '💬 Send as a message instead', fn: () => { skipExp = true; sendChat(); skipExp = false; } }]); }
     if (ms) { const v2 = amt(ms[1]); return openPick('Record contract ' + money0(v2) + '?', [{ label: '✅ Record as the prime contract', fn: () => { const j = jobs[curJob] = jobs[curJob] || {}; j.contract = v2; if (!j.soldOn) j.soldOn = todayISO(); saveJobs(); logMsg(curJob, 'note', '📄 Contract recorded: ' + money0(v2) + '. Estimated pay so far: ' + money0(jobNet(j).net) + '.'); $('#chatIn').value = ''; autoGrow(); render(); toast('Contract recorded'); } }, { label: '💬 Send as a message instead', fn: () => { skipExp = true; sendChat(); skipExp = false; } }]); }
     if (mx) { const t0 = mx[1].replace(/^./, c => c.toUpperCase()), v0 = amt(mx[2]); return openPick('Add expense: ' + t0 + ' ' + money0(v0) + '?', [{ label: '✅ Add as an expense', fn: () => { $('#chatIn').value = ''; autoGrow(); exJob = curJob; $('#ex-title').value = t0; $('#ex-amt').value = fmtAmt(v0); saveExpense(false); } }, { label: '💬 Send as a message instead', fn: () => { skipExp = true; sendChat(); skipExp = false; } }]); }
     if (!text && !pending.length) { toast('Tap the 🎤 on your keyboard to dictate'); $('#chatIn').focus(); return; }
@@ -716,24 +712,27 @@
   const leadPctOf = j => (j && j.leadPct !== undefined && j.leadPct !== '' && j.leadPct !== null) ? +j.leadPct : cfg.leadFirst;
   const repsOf = j => Array.isArray(j && j.repNames) ? 1 + j.repNames.length : Math.max(1, Math.min(10, parseInt(j && j.reps, 10) || 1));
   function earnings(range) {
-    const r = { deals: 0, contracts: 0, revenue: 0, upWon: 0, upPlay: 0, upOff: 0, leadFirst: 0, leadUp: 0, costs: 0, over: 0 }; let pool = 0;
+    const r = { deals: 0, contracts: 0, revenue: 0, upWon: 0, upPlay: 0, upOff: 0, leadFirst: 0, leadUp: 0, costs: 0, over: 0 }; let share = 0;
     Object.values(jobs).forEach(j => {
       if (!j) return; const n = repsOf(j);
-      if (j.contract && inR(j.soldOn, range)) { r.deals++; r.contracts += j.contract; if (j.seller) r.over += j.contract * cfg.override / 100; else { const l = j.contract * leadPctOf(j) / 100; r.revenue += j.contract; r.leadFirst += l; pool += (j.contract - l) / n; } }
+      if (j.contract && inR(j.soldOn, range)) { r.deals++; r.contracts += j.contract; if (j.seller) r.over += j.contract * cfg.override / 100; else { const l = j.contract * leadPctOf(j) / 100; r.revenue += j.contract; r.leadFirst += l; share += (j.contract - l) * cfg.split / 100 / n; } }
       (j.upsells || []).forEach(u => {
-        if (u.status === 'won' && inR(u.wonAt || u.at, range)) { const l = u.amount * cfg.leadUp / 100, uc = u.cost || 0; r.upWon += u.amount; r.revenue += u.amount; r.leadUp += l; r.costs += uc; pool += (u.amount - l - uc) / n; }
-        if (u.status === 'offered') { r.upPlay += u.amount; r.upOff++; }
+        if (!inR(u.wonAt || u.at, range)) return;
+        const l = (u.amount || 0) * cfg.leadUp / 100, uc = u.cost || 0, k = 1 + (u.repNames || []).length;
+        r.upWon += u.amount || 0; r.revenue += u.amount || 0; r.leadUp += l; r.costs += uc; share += ((u.amount || 0) - l - uc) * cfg.split / 100 / k;
       });
-      (j.costs || []).forEach(c => { if (inR(c.date || j.soldOn || todayISO(), range)) { r.costs += c.amount || 0; pool -= (c.amount || 0) / n; } });
+      if (!j.seller) (j.costs || []).forEach(c => { if (inR(c.date || j.soldOn || todayISO(), range)) { r.costs += c.amount || 0; share -= (c.amount || 0) * cfg.split / 100 / n; } });
     });
-    r.lead = r.leadFirst + r.leadUp; r.profit = r.revenue - r.lead - r.costs; r.share = pool * cfg.split / 100; r.net = r.share + r.over; return r;
+    r.lead = r.leadFirst + r.leadUp; r.profit = r.revenue - r.lead - r.costs; r.share = share; r.net = r.share + r.over; return r;
   }
-  // one job: sale + upsells, minus lead cost, minus expenses, then the sales side's share, divided by the reps on the file
+  // one job: the prime contract (lead cost, expenses, split with its reps) plus each upsell on its own (6% lead cost, its own expenses and reps)
   function jobNet(j) {
-    const own = !j.seller, up = (j.upsells || []).filter(u => u.status === 'won').reduce((s, u) => s + u.amount, 0), n = repsOf(j);
-    const revenue = (own ? (j.contract || 0) : 0) + up, lead = (own ? (j.contract || 0) * leadPctOf(j) / 100 : 0) + up * cfg.leadUp / 100;
-    const upCosts = (j.upsells || []).filter(u => u.status === 'won').reduce((s, u) => s + (u.cost || 0), 0), costs = (j.costs || []).reduce((s, c) => s + (c.amount || 0), 0) + upCosts, profit = revenue - lead - costs, pct = cfg.split / n, share = profit * pct / 100, over = !own && j.contract ? j.contract * cfg.override / 100 : 0;
-    return { revenue, lead, costs, upCosts, profit, share, over, reps: n, pct, net: share + over, names: (j.repNames || []) };
+    const own = !j.seller, n = repsOf(j), cl = own ? (j.contract || 0) * leadPctOf(j) / 100 : 0, cc = own ? (j.costs || []).reduce((s, c) => s + (c.amount || 0), 0) : 0;
+    const cprofit = own ? (j.contract || 0) - cl - cc : 0, cpct = cfg.split / n, cshare = cprofit * cpct / 100;
+    const ups = (j.upsells || []).map(u => { const lead = (u.amount || 0) * cfg.leadUp / 100, cost = u.cost || 0, k = 1 + (u.repNames || []).length, profit = (u.amount || 0) - lead - cost, pct = cfg.split / k; return { u, lead, cost, k, profit, pct, share: profit * pct / 100 }; });
+    const upShare = ups.reduce((s, x) => s + x.share, 0), upAmt = ups.reduce((s, x) => s + (x.u.amount || 0), 0), upLead = ups.reduce((s, x) => s + x.lead, 0), upCosts = ups.reduce((s, x) => s + x.cost, 0);
+    const over = !own && j.contract ? j.contract * cfg.override / 100 : 0, revenue = (own ? (j.contract || 0) : 0) + upAmt, lead = cl + upLead, costs = cc + upCosts;
+    return { revenue, lead, costs, upCosts, profit: revenue - lead - costs, share: cshare + upShare, cshare, upShare, over, reps: n, pct: cpct, net: cshare + upShare + over, names: (j.repNames || []), c: { lead: cl, costs: cc, profit: cprofit, pct: cpct, share: cshare }, ups };
   }
   function screenMoney() {
     const range = periodRange(moneyPer), e = earnings(range), ytd = earnings(periodRange('year'));
@@ -742,7 +741,7 @@
     const seg = (k, l) => `<button class="${moneyPer === k ? 'on' : ''}" data-act="mper" data-t="${k}">${l}</button>`;
     const list = Object.entries(jobs).filter(([, j]) => j && (j.contract || (j.upsells || []).length)).sort((a, b) => String(b[1].soldOn || '').localeCompare(String(a[1].soldOn || '')));
     const noCon = Object.entries(jobs).filter(([, j]) => j && !j.contract && !(j.upsells || []).length);
-    const jr = ([n, j]) => { const ups = j.upsells || [], won = ups.filter(u => u.status === 'won').reduce((a, u) => a + u.amount, 0), off = ups.filter(u => u.status === 'offered').reduce((a, u) => a + u.amount, 0);
+    const jr = ([n, j]) => { const ups = j.upsells || [], won = ups.reduce((a, u) => a + (u.amount || 0), 0), off = 0;
       return `<button class="srow" data-act="moneyjob" data-p="${esc(n)}"><span class="sico">💼</span><span class="slbl"><b>${esc(j.addr || n)}</b><small>${esc(n)}${j.seller ? ' · sold by ' + esc(j.seller) : ''}${won ? ' · ' + money0(won) + ' upsell won' : ''}${off ? ' · ' + money0(off) + ' offered' : ''}${(j.repNames || []).length ? ' · with ' + esc(j.repNames.join(', ')) : ''}${j.contract ? ' · you keep ' + money0(jobNet(j).net) : ''}</small></span><span class="sval">${j.contract ? money0(j.contract) : 'Add $'}</span><span class="schev">›</span></button>`; };
     return `<div class="seg">${seg('month', 'This month')}${seg('last', 'Last month')}${seg('year', 'This year')}</div>
       <div class="bigcard"><div class="bl">You keep</div><div class="bn">${money0(e.net)}</div><div class="bs">${money0(e.revenue)} sales − ${money0(e.lead)} lead cost − ${money0(e.costs)} expenses = ${money0(e.profit)} profit<br>Your share (${cfg.split}%, divided when reps share a file) ${money0(e.share)}${e.over ? ' + ' + money0(e.over) + ' overrides' : ''}<br>${e.deals} ${e.deals === 1 ? 'job' : 'jobs'} sold · ${money0(e.contracts)} in contracts</div></div>
@@ -752,7 +751,7 @@
         <div class="mrow"><span class="sico">🧾</span><span class="mbody"><b>Expenses</b><small>Turf, materials, fees you added to jobs</small></span><b>−${money0(e.costs)}</b></div>
         <div class="mrow"><span class="sico">📊</span><span class="mbody"><b>Profit to split</b><small>Sales side gets ${cfg.split}% (shared by the reps on a file), company ${100 - cfg.split}%</small></span><b>${money0(e.profit)}</b></div>
         <div class="mrow"><span class="sico">🤝</span><span class="mbody"><b>Rep overrides</b><small>${cfg.override}% of rep deals</small></span><b>${money0(e.over)}</b></div>
-        <div class="mrow"><span class="sico">⏳</span><span class="mbody"><b>Upsells in play</b><small>${e.upOff} offered, waiting on the customer</small></span><b>${money0(e.upPlay)}</b></div></div>
+      </div>
       <div class="ssec">Yearly goal</div>
       <div class="scard goal"><div class="grow"><b>${money0(ytd.net)}</b><span>of ${money0(cfg.goal)} · ${pct}%</span></div>
         <div class="prog"><i style="width:${pct}%"></i></div>
