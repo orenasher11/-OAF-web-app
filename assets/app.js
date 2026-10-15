@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '83';
+  const APP_VERSION = '84';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -1364,16 +1364,28 @@
   const mapPlaced = it => it.rec.lat != null && it.rec.geoAddr === it.addr;
   function mapStatus() {
     const el = document.getElementById('mapStatus'); if (!el) return;
-    const all = mapItems(), placed = all.filter(mapPlaced).length, fail = all.filter(i => !mapPlaced(i) && i.rec.geoFail === i.addr).length;
-    el.textContent = !all.length ? 'No addresses yet. Add an address to a job or lead and it appears here.' : placed + ' of ' + all.length + ' placed' + (geoBusy ? ' · finding the rest…' : '') + (fail ? ' · ' + fail + " couldn't be found (check the address)" : '');
+    const all = mapItems(), placed = all.filter(mapPlaced).length, fails = all.filter(i => !mapPlaced(i) && i.rec.geoFail === i.addr), approx = all.filter(i => mapPlaced(i) && i.rec.geoApprox).length;
+    el.innerHTML = !all.length ? 'No addresses yet. Add an address to a job or lead and it appears here.' : placed + ' of ' + all.length + ' placed' + (geoBusy ? ' · finding the rest…' : '') + (approx ? ' · ' + approx + ' placed by ZIP code (approximate)' : '') + (fails.length ? `<br><span class="red">Could not find: ${fails.map(f => esc(f.addr)).join(' · ')}</span> <button class="linkbtn" data-act="mapretry">Retry</button>` : '');
+  }
+  async function nominatim(q) {
+    const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&viewbox=-121,36,-113,32&q=' + encodeURIComponent(q)); const d = await r.json(); return d && d[0] ? { lat: +d[0].lat, lng: +d[0].lon } : null;
+  }
+  const pause = () => new Promise(r => setTimeout(r, 1100));
+  // try the address as typed, then a cleaner street + ZIP, then just the ZIP (marked approximate)
+  async function lookupAddr(addr) {
+    const clean = String(addr).replace(/,?\s*(United States( of America)?|USA)\s*$/i, '').replace(/\bCalifornia\b/gi, 'CA').replace(/\s+(#|apt\.?|unit|ste\.?|suite)\s*\S+/gi, '').replace(/\s+/g, ' ').trim();
+    const zip = (clean.match(/\b(9\d{4})\b/) || [])[1], street = (clean.match(/^(\d+\s+\S+(?:\s+\S+){0,2})/) || [])[1];
+    const tries = [[clean, false]]; if (zip && street) tries.push([street + ', ' + zip + ', CA', false]); if (zip) tries.push([zip + ', CA', true]);
+    for (let i = 0; i < tries.length; i++) { if (i) await pause(); const p = await nominatim(tries[i][0]); if (p) return { ...p, approx: tries[i][1] }; }
+    return null;
   }
   async function geocodeList(list, stillOn, step) {
     if (geoBusy) return; geoBusy = true; mapStatus();
     try {
       for (const it of list.filter(i => !mapPlaced(i) && i.rec.geoFail !== i.addr)) {
         if (!stillOn()) break;
-        let d = []; try { const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&viewbox=-121,36,-113,32&q=' + encodeURIComponent(it.addr)); d = await r.json(); } catch { break; }
-        if (d && d[0]) { it.rec.lat = +d[0].lat; it.rec.lng = +d[0].lon; it.rec.geoAddr = it.addr; delete it.rec.geoFail; } else it.rec.geoFail = it.addr;
+        let p = null; try { p = await lookupAddr(it.addr); } catch { break; }
+        if (p) { it.rec.lat = p.lat; it.rec.lng = p.lng; it.rec.geoAddr = it.addr; if (p.approx) it.rec.geoApprox = true; else delete it.rec.geoApprox; delete it.rec.geoFail; } else it.rec.geoFail = it.addr;
         it.save(); step(); mapStatus();
         await new Promise(r => setTimeout(r, 1100));
       }
@@ -1404,7 +1416,7 @@
       }
       if (anchored) { m.on('click', () => { if (Date.now() - holdAt < 700) return; const i = cmpSel.indexOf(it.k); if (i === 0) cmpSel = []; else if (i > 0) cmpSel.splice(i, 1); else if (cmpSel.length < 4) cmpSel.push(it.k); else toast('Up to 3 pins from your starting point'); drawPins(); }); return; }
       const org = myPos || getHome();
-      m.bindPopup(`<b>${esc(it.title)}</b><br><small>${esc(it.kind === 'job' ? it.sub : it.addr)}</small><div class="drv popdrv" data-f="${org.lat},${org.lng}" data-t="${it.rec.lat},${it.rec.lng}"><small>Checking drive time…</small></div><div class="pbtns"><button data-act="mapnav" data-a="${esc(it.addr)}">🧭 Go</button><button data-act="mapday" data-k="${esc(it.k)}">＋ Day</button><button data-act="mapopen" data-k="${esc(it.k)}">Open</button></div>`);
+      m.bindPopup(`<b>${esc(it.title)}</b><br><small>${esc(it.kind === 'job' ? it.sub : it.addr)}${it.rec.geoApprox ? ' · approximate (by ZIP)' : ''}</small><div class="drv popdrv" data-f="${org.lat},${org.lng}" data-t="${it.rec.lat},${it.rec.lng}"><small>Checking drive time…</small></div><div class="pbtns"><button data-act="mapnav" data-a="${esc(it.addr)}">🧭 Go</button><button data-act="mapday" data-k="${esc(it.k)}">＋ Day</button><button data-act="mapopen" data-k="${esc(it.k)}">Open</button></div>`);
     });
     const pts = cmpSel.map(k => items.find(i => i.k === k)).filter(Boolean);
     for (let j = 1; j < pts.length; j++) L.polyline([[pts[0].rec.lat, pts[0].rec.lng], [pts[j].rec.lat, pts[j].rec.lng]], { color: '#ff6a1a', weight: 3, dashArray: '2 7', interactive: false }).addTo(pinLayer);
@@ -1482,6 +1494,7 @@
     if (tot) { const legs = [...document.querySelectorAll('.drv.day')]; const secs = legs.reduce((s, e) => s + (+e.dataset.s || 0), 0); tot.textContent = legs.length && secs ? ' · about ' + fmtDrive(secs) + ' of driving' : ''; }
   }
   function mapAct(act, el) {
+    if (act === 'mapretry') { mapItems().forEach(i => { if (i.rec.geoFail) { delete i.rec.geoFail; i.save(); } }); mapStatus(); return geocodeMissing(); }
     if (act === 'mapcmpclear') { cmpSel = []; return drawPins(); }
     if (act === 'mapcmpday') { cmpSel.forEach(k => { if (!dayStops.includes(k)) dayStops.push(k); }); saveDay(); cmpSel = []; toast('Added to My day'); return render(); }
       if (act === 'mapnav') return window.open(appleMaps(el.dataset.a), '_blank');
@@ -1571,7 +1584,7 @@
           .bindPopup(`<b>${esc(it.title)}</b><br><small>${esc(g.length ? g.join(' + ') : 'No stage yet')}${j.contract ? ' · ' + money0(j.contract) : ''}</small><div class="pbtns"><button data-act="mapnav" data-a="${esc(it.addr)}">🧭 Go</button><button data-act="mapopen" data-k="${esc(it.k)}">Open</button></div>`);
       });
       if (pts.length !== repMap._n) { repMap._n = pts.length; if (pts.length) repMap.fitBounds(pts, { padding: [40, 40], maxZoom: 11 }); else repMap.fitBounds(SOCAL); }
-      const all = mine(), n = all.filter(mapPlaced).length, note = document.getElementById('repMapNote'); if (note) note.textContent = !all.length ? 'No addresses yet for this rep.' : n + ' of ' + all.length + ' placed' + (n < all.length ? ' · finding the rest…' : '');
+      const all = mine(), n = all.filter(mapPlaced).length, note = document.getElementById('repMapNote'); if (note) note.innerHTML = !all.length ? 'No addresses yet for this rep.' : n + ' of ' + all.length + ' placed' + (n < all.length ? (geoBusy ? ' · finding the rest…' : ' · ' + (all.length - n) + ' could not be found <button class="linkbtn" data-act="repmapretry">Retry</button>') : '');
     };
     repMap.on('popupopen', ev => { ev.popup.getElement().querySelectorAll('[data-act]').forEach(b => { b.onclick = () => mapAct(b.dataset.act, b); }); });
     draw(); geocodeList(mine(), () => view === 'rep', draw); setTimeout(() => repMap && repMap.invalidateSize(), 150);
@@ -2262,6 +2275,7 @@
       if (act.startsWith('deal')) return void dealAct(act, el);
       if (act === 'repsw') { asRep = el.dataset.r || ''; if (!['today', 'projects', 'map', 'money'].includes(view)) view = 'projects'; render(); window.scrollTo(0, 0); return; }
       if (act === 'repall') { asRep = ''; view = 'reports'; render(); window.scrollTo(0, 0); return; }
+      if (act === 'repmapretry') { mapItems().forEach(i => { if (i.rec.geoFail) { delete i.rec.geoFail; i.save(); } }); return render(); }
       if (act === 'repopen') { asRep = el.dataset.r; view = 'projects'; render(); window.scrollTo(0, 0); return; }
       if (act === 'openjob') { if (view === 'rep' && repName) { asRep = repName; } curJob = el.dataset.p; jobTab = 'chat'; tabHist = []; chatSearch = false; chatLimit = 300; view = 'job'; render(); return; }
       if (act === 'go') { view = el.dataset.v; filter = 'all'; render(); window.scrollTo(0, 0); return; }
