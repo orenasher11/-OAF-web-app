@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '63';
+  const APP_VERSION = '64';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -357,6 +357,7 @@
     paintTodoBar();
     $('#apVia').lastChild.textContent = sendVia === 'wa' ? 'Sending via WhatsApp' : 'Sending via Messages';
   }
+  document.addEventListener('pointerdown', e => { if (e.target.closest && e.target.closest('.sheet .actions button, #exReceipt')) e.preventDefault(); }, true);
   // ---- job money page: one list of sales (first sale + upsells), all the same ----
   let dealJob = '', dealFrom = 'job', dlMode = '', dlId = '', dlReps = [];
   const UP_IDEAS = ['Turf', 'Pavers', 'Patio', 'Lighting', 'Fence', 'Other'];
@@ -408,7 +409,8 @@
   $('#dlChips').onclick = e => { const c = e.target.closest('[data-t]'); if (c) { $('#dl-title').value = c.dataset.t; $('#dl-amt').focus(); } };
   $('#dlCancel').onclick = () => $('#dlBg').classList.remove('open');
   $('#dlBg').onclick = e => { if (e.target.id === 'dlBg') $('#dlBg').classList.remove('open'); };
-  $('#dlSave').onclick = () => {
+  $('#dlSave').onclick = () => { try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); dlSaveNow(); } catch (err) { toast('Could not save: ' + (err && err.message || err)); } };
+  function dlSaveNow() {
     const j = jobs[dealJob] = jobs[dealJob] || {}, v = amt($('#dl-amt').value), lp = $('#dl-lead').value.trim();
     const costs = [...document.querySelectorAll('#dlCosts .costrow')].map(r => ({ id: r.dataset.id || uid(), title: r.querySelector('.c-title').value.trim() || 'Expense', amount: amt(r.querySelector('.c-amt').value), date: r.dataset.date || todayISO() })).filter(c => c.amount);
     if (dlMode === 'contract') {
@@ -420,7 +422,7 @@
       const tgt = u || { id: uid(), at: todayISO(), wonAt: todayISO() }; Object.assign(tgt, f); delete tgt.cost; if (dlReps.length) tgt.repNames = dlReps.slice(); else delete tgt.repNames; if (lp === '') delete tgt.leadPct; else tgt.leadPct = parseFloat(lp) || 0; if (!u) ups.push(tgt);
     }
     saveJobs(); $('#dlBg').classList.remove('open'); render(); toast('Saved');
-  };
+  }
   $('#dlDel').onclick = () => { const j = jobs[dealJob]; if (!j) return; const gone = (j.upsells || []).find(x => x.id === dlId); j.upsells = (j.upsells || []).filter(x => x.id !== dlId); saveJobs(); $('#dlBg').classList.remove('open'); render(); toast('Upsell removed', () => { j.upsells = [...(j.upsells || []), gone]; saveJobs(); render(); }); };
   $('#dlPdf').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) maybeContract(dealJob, { name: f.name, mime: f.type, blob: f }, true); };
   function dealAct(act, el) {
