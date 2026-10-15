@@ -9,8 +9,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.svg">
 <title>My Tasks</title>
-<link rel="stylesheet" href="assets/base.css?v=73">
-<link rel="stylesheet" href="assets/theme.css?v=73">
+<link rel="stylesheet" href="assets/base.css?v=74">
+<link rel="stylesheet" href="assets/theme.css?v=74">
 </head>
 <body class="blueprint">
 <div class="app">
@@ -120,6 +120,8 @@
     <input id="j-addr" placeholder="e.g. 123 Main St, Palm Springs, CA" autocomplete="off">
     <label for="j-name">Customer / project <i class="req">required</i></label>
     <input id="j-name" placeholder="e.g. Martinez kitchen" autocomplete="off">
+    <label for="j-seller">Who sold it</label>
+    <select id="j-seller"></select>
     <div id="j-kickwrap"><label>Game Day (day 1)</label>
     <div class="chips" id="kickChips">
       <button type="button" class="chip" data-d="0">Today</button>
@@ -430,7 +432,7 @@
 <script>
 // Safety net: shows a repair bar if the app fails to start or throws an error. Never deletes your saved tasks.
 (function () {
-  var EXPECT = '73', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
+  var EXPECT = '74', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
   function show(t) { try { msg.textContent = t; bar.hidden = false; } catch (e) {} }
   window.__oafNotify = show;
   window.addEventListener('error', function (e) { if (e.message && /ResizeObserver|Script error/.test(e.message)) return; show('Error: ' + (e.message || 'unknown') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
@@ -456,12 +458,12 @@
   }, 3500);
 })();
 </script>
-<script src="assets/config.js?v=73"></script>
-<script src="assets/app.js?v=73"></script>
+<script src="assets/config.js?v=74"></script>
+<script src="assets/app.js?v=74"></script>
 <script>
 // The cloud library loads in the background, so a slow connection never blocks the app from opening.
 (function () {
-  var V = '73';
+  var V = '74';
   function boot() { var s = document.createElement('script'); s.src = 'assets/sync.js?v=' + V; document.body.appendChild(s); }
   if (window.OAF_CFG && window.OAF_CFG.url) {
     var t = document.createElement('script'); t.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';

@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '73';
+  const APP_VERSION = '74';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -1181,12 +1181,13 @@
         <button data-act="${j.addr ? 'navjob' : 'editjobd'}"><i>🧭</i>Navigate</button>
         <button data-act="addmember"><i>＋</i>Add</button>
         <button data-act="search"><i>🔍</i>Search</button></div>
-      ${(() => { const mm = jobNet(j); return `<button class="moneycard" data-act="moneyjob" data-p="${esc(n)}">${j.contract ? `<span class="mcl">Contract <b>${money0(j.contract)}</b></span><span class="mcr">You keep <b>${money0(mm.net)}</b></span><small>${money0(mm.lead)} lead cost · ${money0(mm.costs)} expenses${mm.reps > 1 ? ' · split ' + mm.reps + ' ways' : ''} · tap to edit</small>` : '<span class="mcl"><b>💵 Add the contract amount</b></span><small>See what you keep after lead cost and expenses</small>'}</button>`; })()}
+      ${(() => { const mm = jobNet(j); return `<button class="moneycard" data-act="moneyjob" data-p="${esc(n)}">${j.contract ? `<span class="mcl">Contract <b>${money0(j.contract)}</b></span><span class="mcr">You keep <b>${money0(mm.net)}</b></span><small>${j.seller && !asRep ? 'Sold by ' + esc(j.seller) + ' · your ' + cfg.override + '% override' : money0(mm.lead) + ' lead cost · ' + money0(mm.costs) + ' expenses' + (mm.reps > 1 ? ' · split ' + mm.reps + ' ways' : '')} · tap to edit</small>` : '<span class="mcl"><b>💵 Add the contract amount</b></span><small>See what you keep after lead cost and expenses</small>'}</button>`; })()}
       <div class="ssec">Media</div><div class="scard">
         ${srow('🖼️', 'Media, links and docs', media.length + links, 'jtab', 'data-tab="media"')}
         ${srow('⭐', 'Starred messages', starred, 'jtab', 'data-tab="starred"')}
         ${srow('✅', 'To-do &amp; checklists', openN ? openN + ' open' : '✓', 'jtab', 'data-tab="tasks"')}
         ${srow('📍', 'Job stages', getStages(j).length ? esc(getStages(j).join(' + ')) : 'Set', 'stagepick')}
+        ${srow('👤', 'Sold by', esc(j.seller || (asRep ? asRep : 'Me')), 'soldby')}
         ${srow('💵', 'Contract &amp; upsells', j.contract ? money0(j.contract) : 'Add', 'moneyjob', `data-p="${esc(n)}"`)}
         ${srow('📝', 'Job summary', '', 'summary')}</div>
       <div class="ssec">Financing</div><div class="scard">
@@ -2069,6 +2070,7 @@
   function openJob(mode) {
     jobMode = mode || 'new'; paintMode(); $('#j-stage').innerHTML = JSTAGES.map(x => `<option>${x}</option>`).join(''); $('#j-stage').value = jobMode === 'old' ? 'IN PROGRESS' : 'PRE NTP'; $('#j-fin').innerHTML = finOptions(''); $('#j-appr').value = '';
     ['#j-name', '#j-sub', '#j-phone', '#j-addr', '#j-upsell', '#j-contract'].forEach(i => { $(i).value = ''; $(i).classList.remove('err'); });
+    $('#j-seller').innerHTML = (asRep ? `<option value="${esc(asRep)}">${esc(asRep)}</option>` : '<option value="">Me (I sold it)</option>') + team.filter(x => x.name !== OWNER && x.name !== asRep).map(x => `<option>${esc(x.name)}</option>`).join('');
     setKick(addDays(1)); $('#j-time').value = '08:00';
     $('#jobBg').classList.add('open'); setTimeout(() => $('#j-addr').focus(), 60);
   }
@@ -2090,7 +2092,7 @@
     if (pendingLead) { const l = leads.find(x => x.id === pendingLead); if (l) { l.stage = 'sold'; l.job = name; saveLeads(); } pendingLead = null; }
     const finCo = $('#j-fin').value, apprIn = parseInt(($('#j-appr').value || '').replace(/[^0-9]/g, ''), 10) || 0;
     const stNew = $('#j-stage').value || 'PRE NTP';
-    jobs[name] = { ...(jobs[name] || {}), ...(asRep ? { seller: asRep } : {}), stage: stNew, stages: [stNew], stageAt: new Date().toISOString(), stageLog: [{ stage: stNew, at: new Date().toISOString(), by: OWNER || '' }], ...(finCo ? { fins: [{ id: uid(), company: finCo, status: finCo === 'Cash' ? '' : 'Applied', amount: contract || 0, approved: finCo === 'Cash' ? 0 : apprIn }], finance: '', finStatus: '' } : {}), upsell: amt, ...(contract ? { contract, ...(jobMode === 'new' ? { soldOn: todayISO() } : {}) } : {}), subs, sub: undefined, phone: undefined, addr: $('#j-addr').value.trim(), ...(jobMode === 'new' ? { kick } : {}), every: jobs[name]?.every || 5 };
+    jobs[name] = { ...(jobs[name] || {}), ...($('#j-seller').value ? { seller: $('#j-seller').value } : {}), stage: stNew, stages: [stNew], stageAt: new Date().toISOString(), stageLog: [{ stage: stNew, at: new Date().toISOString(), by: OWNER || '' }], ...(finCo ? { fins: [{ id: uid(), company: finCo, status: finCo === 'Cash' ? '' : 'Applied', amount: contract || 0, approved: finCo === 'Cash' ? 0 : apprIn }], finance: '', finStatus: '' } : {}), upsell: amt, ...(contract ? { contract, ...(jobMode === 'new' ? { soldOn: todayISO() } : {}) } : {}), subs, sub: undefined, phone: undefined, addr: $('#j-addr').value.trim(), ...(jobMode === 'new' ? { kick } : {}), every: jobs[name]?.every || 5 };
     saveJobs(); save(); closeJob();
     if (jobMode === 'old') { curJob = name; jobTab = 'chat'; tabHist = []; chatLimit = 300; view = 'job'; render(); toast('Job added. Tap ＋ then Import WhatsApp chat to bring in the history.'); return; }
     view = 'today'; filter = 'all'; render(); window.scrollTo(0, 0);
@@ -2222,6 +2224,8 @@
       }
       if (act === 'older') { chatLimit += 300; const h0 = document.body.scrollHeight; render(); window.scrollTo(0, 0); return; }
       if (act === 'mper') { moneyPer = el.dataset.t; return render(); }
+      if (act === 'soldby') { const j = jobs[curJob] = jobs[curJob] || {}, set = nm => { j.seller = nm; syncMembers(j); saveJobs(); render(); toast(nm ? nm + ' sold it. You get ' + cfg.override + '% of the contract.' : 'Marked as sold by you'); };
+        return openPick('Who sold this job?', [{ label: (j.seller ? '' : '✓ ') + 'Me (I sold it)', fn: () => set('') }, ...team.filter(x => x.name !== OWNER).map(x => ({ label: (j.seller === x.name ? '✓ ' : '') + label2(x), fn: () => set(x.name) }))]); }
       if (act === 'moneyjob') return openMoney(el.dataset.p || curJob);
       if (act === 'cfgedit') return openCfg();
       if (act === 'demoload') return loadDemo();
