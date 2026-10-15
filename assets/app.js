@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '67';
+  const APP_VERSION = '69';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -1325,19 +1325,20 @@
     const all = mapItems(), placed = all.filter(mapPlaced).length, fail = all.filter(i => !mapPlaced(i) && i.rec.geoFail === i.addr).length;
     el.textContent = !all.length ? 'No addresses yet. Add an address to a job or lead and it appears here.' : placed + ' of ' + all.length + ' placed' + (geoBusy ? ' · finding the rest…' : '') + (fail ? ' · ' + fail + " couldn't be found (check the address)" : '');
   }
-  async function geocodeMissing() {
+  async function geocodeList(list, stillOn, step) {
     if (geoBusy) return; geoBusy = true; mapStatus();
     try {
-      for (const it of mapItems().filter(i => !mapPlaced(i) && i.rec.geoFail !== i.addr)) {
-        if (view !== 'map') break;
+      for (const it of list.filter(i => !mapPlaced(i) && i.rec.geoFail !== i.addr)) {
+        if (!stillOn()) break;
         let d = []; try { const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&viewbox=-121,36,-113,32&q=' + encodeURIComponent(it.addr)); d = await r.json(); } catch { break; }
         if (d && d[0]) { it.rec.lat = +d[0].lat; it.rec.lng = +d[0].lon; it.rec.geoAddr = it.addr; delete it.rec.geoFail; } else it.rec.geoFail = it.addr;
-        it.save(); drawPins(); mapStatus();
+        it.save(); step(); mapStatus();
         await new Promise(r => setTimeout(r, 1100));
       }
     } catch {}
     geoBusy = false; mapStatus();
   }
+  const geocodeMissing = () => geocodeList(mapItems(), () => view === 'map', drawPins);
   let holdAt = 0, pulseKey = null; const HOLD_MS = 650;
   function buzz() {
     try { if (navigator.vibrate) navigator.vibrate(40); } catch {}
@@ -1377,6 +1378,11 @@
     box.innerHTML = `<div class="ssec">From: ${esc(pts[0].title)} (A)</div>${rows.length ? `<div class="scard">${rows.join('')}</div>` : '<div class="hint">Now tap other pins to see how long it takes to get there.</div>'}<div class="mapbar2"><button data-act="mapcmpday">＋ Add to My day</button><button data-act="mapcmpclear">✖ Clear</button></div>`;
     fillDrive(box);
   }
+  function addBaseLayer(map) {
+    let base = null;
+    if (window.maplibregl && L.maplibreGL) { try { base = L.maplibreGL({ style: 'https://tiles.openfreemap.org/styles/bright', attribution: '© OpenFreeMap © OpenMapTiles · Data © OpenStreetMap' }).addTo(map); } catch { base = null; } }
+    if (!base) L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, detectRetina: true, attribution: '© OpenStreetMap contributors' }).addTo(map);
+  }
   function initMap() {
     const box = document.getElementById('jmap'); if (!box) return;
     if (lmap) { try { lmap.remove(); } catch {} lmap = null; }
@@ -1385,12 +1391,10 @@
       ensureMapLibs().then(() => { if (view === 'map') initMap(); }).catch(() => { box.innerHTML = '<div class="empty small"><div class="big">🗺️</div>The map needs an internet connection to load. Try again in a moment.</div>'; });
       return;
     }
-    lmap = L.map(box, { zoomControl: true, attributionControl: true });
+    box.innerHTML = ''; lmap = L.map(box, { zoomControl: true, attributionControl: true });
     if (mapView) lmap.setView(mapView.c, mapView.z, { animate: false }); else lmap.fitBounds(SOCAL);
     lmap.on('moveend', () => { if (lmap) mapView = { c: lmap.getCenter(), z: lmap.getZoom() }; });
-    let base = null;
-    if (window.maplibregl && L.maplibreGL) { try { base = L.maplibreGL({ style: 'https://tiles.openfreemap.org/styles/bright', attribution: '© OpenFreeMap © OpenMapTiles · Data © OpenStreetMap' }).addTo(lmap); } catch { base = null; } }
-    if (!base) L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, detectRetina: true, attribution: '© OpenStreetMap contributors' }).addTo(lmap);
+    addBaseLayer(lmap);
     const h = getHome(); L.circle([h.lat, h.lng], { radius: 300 * 1609.34, color: '#0f2747', weight: 1.5, dashArray: '6 6', fillOpacity: 0.03, interactive: false }).addTo(lmap);
     L.marker([h.lat, h.lng], { icon: L.divIcon({ className: 'pinwrap', html: '<span class="pin home">🏠</span>', iconSize: [26, 26], iconAnchor: [13, 13] }), interactive: false }).addTo(lmap);
     pinLayer = L.layerGroup().addTo(lmap); fillDrive();
@@ -1457,6 +1461,80 @@
       <div class="ssec">My day${day.length ? ' · ' + day.length + ' stops' : ''}<span id="dayTot"></span></div>
       ${day.length ? `<div class="scard">${day.map((x, n) => `<div class="srow"><span class="sico">${n + 1}</span><span class="slbl"><b>${esc(x.it.title)}</b><small><span class="drv day" data-f="${x.from.lat},${x.from.lng}" data-t="${x.it.rec.lat},${x.it.rec.lng}">…</span> from ${n ? 'previous stop' : myPos ? 'you' : 'home'}</small></span><button class="spill" data-act="mapnav" data-a="${esc(x.it.addr)}">🧭 Go</button><button class="cx" data-act="mapundo" data-k="${esc(x.it.k)}" aria-label="Remove">×</button></div>`).join('')}</div><button class="jbtn wide" data-act="mapclear">Clear my day</button>` : '<div class="hint">Tap a pin and choose <b>＋ Day</b>. The app orders your stops from nearest to farthest and shows the drive time between them. Times do not include live traffic. Apple Maps shows traffic when you tap Go.</div>'}`;
   }
+
+  // ---- my reps: table, then one rep's jobs, map and what you earn from them ----
+  let repName = '', repMap = null;
+  const repNames = () => { const s = new Set(team.map(x => x.name).filter(n => n && n !== OWNER)); Object.values(jobs).forEach(j => { if (j && j.seller && !j.demo) s.add(j.seller); }); return [...s].sort((x, y) => x.localeCompare(y)); };
+  const repJobs = rep => Object.entries(jobs).filter(([, j]) => j && !j.demo && j.seller === rep);
+  function lastAct(j) {
+    const t = x => { const v = x ? new Date(x).getTime() : 0; return isNaN(v) ? 0 : v; };
+    return Math.max(...(j.chat || []).map(m => t(m.at)), t(j.stageAt), t(j.soldOn && j.soldOn + 'T12:00:00'), t(j.last && j.last + 'T12:00:00'), 0);
+  }
+  const agoDays = ts => ts ? Math.floor((Date.now() - ts) / 864e5) : null;
+  const agoTxt = d => d === null ? 'No activity yet' : d <= 0 ? 'Active today' : d === 1 ? 'Active yesterday' : d + ' days ago';
+  function repStats(rep, range) {
+    const o = { deals: 0, sold: 0, mine: 0, open: 0, quiet: 0, life: 0, total: 0 };
+    repJobs(rep).forEach(([, j]) => {
+      o.total++;
+      if (!j.archived) { o.open++; const d = agoDays(lastAct(j)); if (d === null || d >= 7) o.quiet++; }
+      if (j.contract) { const m = j.contract * cfg.override / 100; o.life += m; if (inR(j.soldOn, range)) { o.deals++; o.sold += j.contract; o.mine += m; } }
+    });
+    return o;
+  }
+  function screenReps() {
+    $('#h1').textContent = 'My reps'; $('#sub').textContent = 'Their jobs, and your ' + cfg.override + '% from each';
+    const range = periodRange(moneyPer), names = repNames(), rows = names.map(nm => ({ nm, s: repStats(nm, range) })).sort((a, b) => b.s.mine - a.s.mine || a.nm.localeCompare(b.nm));
+    const tot = rows.reduce((t, r) => ({ open: t.open + r.s.open, sold: t.sold + r.s.sold, mine: t.mine + r.s.mine, quiet: t.quiet + r.s.quiet }), { open: 0, sold: 0, mine: 0, quiet: 0 });
+    const seg = (k, l) => `<button class="${moneyPer === k ? 'on' : ''}" data-act="mper" data-t="${k}">${l}</button>`;
+    if (!names.length) return `<div class="empty"><div class="big">👥</div>No reps yet.<br>Add them under More → 👥 My team, then pick them in <b>Sold by</b> on a job's first sale.</div>`;
+    return `<div class="seg">${seg('month', 'This month')}${seg('last', 'Last month')}${seg('year', 'This year')}</div>
+      <div class="bigcard"><div class="bl">You earn from your reps</div><div class="bn">${money0(tot.mine)}</div><div class="bs">${money0(tot.sold)} sold by ${names.length} ${names.length === 1 ? 'rep' : 'reps'} · ${tot.open} open ${tot.open === 1 ? 'job' : 'jobs'}${tot.quiet ? ' · <b class="red">' + tot.quiet + ' quiet</b>' : ''}</div></div>
+      <div class="reptable"><div class="rth"><span>Rep</span><span>Open</span><span>Sold</span><span>Your ${cfg.override}%</span></div>
+      ${rows.map(r => `<button class="rtr" data-act="repopen" data-r="${esc(r.nm)}"><span class="rn"><b>${esc(r.nm)}</b><small>${r.s.quiet ? '<em class="red">' + r.s.quiet + ' quiet 7+ days</em>' : r.s.open ? 'All active' : 'No open jobs'}</small></span><span>${r.s.open}</span><span>${money0(r.s.sold)}</span><span class="mine">${money0(r.s.mine)}</span></button>`).join('')}
+      <div class="rtr tot"><span class="rn"><b>Total</b></span><span>${tot.open}</span><span>${money0(tot.sold)}</span><span class="mine">${money0(tot.mine)}</span></div></div>
+      <div class="hint">Tap a rep to see their jobs, where each one is, and where they are on the map. A job counts for a rep when you pick them in <b>Sold by</b>.</div>`;
+  }
+  function screenRep() {
+    const nm = repName, range = periodRange(moneyPer), s = repStats(nm, range), per = { month: 'this month', last: 'last month', year: 'this year' }[moneyPer];
+    $('#h1').textContent = nm; $('#sub').textContent = 'Jobs and what you earn from this rep';
+    const seg = (k, l) => `<button class="${moneyPer === k ? 'on' : ''}" data-act="mper" data-t="${k}">${l}</button>`;
+    const rows = repJobs(nm).map(([n, j]) => ({ n, j, d: agoDays(lastAct(j)) })), open = rows.filter(r => !r.j.archived).sort((a, b) => (b.d === null ? 999 : b.d) - (a.d === null ? 999 : a.d)), done = rows.filter(r => r.j.archived);
+    const card = r => { const g = getStages(r.j), i = stageIdx(r.j), mine = (r.j.contract || 0) * cfg.override / 100, quiet = !r.j.archived && (r.d === null || r.d >= 7);
+      return `<button class="repjob" data-act="openjob" data-p="${esc(r.n)}"><span class="rjtop"><b>${esc(r.j.addr || r.n)}</b><span class="rjmoney">${r.j.contract ? money0(r.j.contract) : 'No contract'}</span></span>
+        <span class="rjmid"><span class="stg" style="--c:${i >= 0 ? SCOL[i] : '#94a3b8'}">${g.length ? esc(g.length <= 2 ? g.join(' + ') : g[0] + ' + ' + (g.length - 1) + ' more') : 'No stage yet'}</span><span class="${quiet ? 'red' : 'muted'}">${agoTxt(r.d)}</span></span>
+        <span class="rjmid"><span class="muted">${esc(r.n)}</span><span class="rjmine">${r.j.contract ? 'You get ' + money0(mine) : ''}</span></span></button>`; };
+    const ph = (team.find(x => x.name === nm) || {}).phone;
+    return `<div class="seg">${seg('month', 'This month')}${seg('last', 'Last month')}${seg('year', 'This year')}</div>
+      <div class="bigcard"><div class="bl">You earn from ${esc(nm)} ${per}</div><div class="bn">${money0(s.mine)}</div><div class="bs">${s.deals} ${s.deals === 1 ? 'job' : 'jobs'} sold · ${money0(s.sold)} in contracts<br>All time: ${money0(s.life)} · ${s.open} open ${s.open === 1 ? 'job' : 'jobs'}${s.quiet ? ' · ' + s.quiet + ' quiet' : ''}</div></div>
+      ${ph ? `<div class="mapbar"><button class="mcall" data-name="${esc(nm)}" data-phone="${esc(ph)}">📞 Call ${esc(nm)}</button></div>` : ''}
+      <div class="ssec">Where their jobs are</div><div id="repmap" class="jmap"></div><div class="mapnote" id="repMapNote"></div>
+      <div class="ssec">Open jobs · ${open.length}</div>${open.length ? open.map(card).join('') : '<div class="hint">No open jobs for this rep.</div>'}
+      ${done.length ? `<div class="ssec">Completed · ${done.length}</div>${done.map(card).join('')}` : ''}`;
+  }
+  function initRepMap() {
+    const box = document.getElementById('repmap'); if (!box) return;
+    if (repMap) { try { repMap.remove(); } catch {} repMap = null; }
+    if (!window.L) {
+      box.innerHTML = '<div class="empty small"><div class="big">🗺️</div>Loading the map…</div>';
+      ensureMapLibs().then(() => { if (view === 'rep') initRepMap(); }).catch(() => { box.innerHTML = '<div class="empty small"><div class="big">🗺️</div>The map needs an internet connection.</div>'; });
+      return;
+    }
+    box.innerHTML = ''; repMap = L.map(box, { zoomControl: true }); addBaseLayer(repMap);
+    const layer = L.layerGroup().addTo(repMap), mine = () => mapItems().filter(i => i.kind === 'job' && (jobs[i.key] || {}).seller === repName);
+    const draw = () => {
+      if (!repMap) return; layer.clearLayers(); const pts = [];
+      mine().filter(mapPlaced).forEach(it => {
+        pts.push([it.rec.lat, it.rec.lng]); const j = jobs[it.key], g = getStages(j);
+        L.marker([it.rec.lat, it.rec.lng], { icon: L.divIcon({ className: 'pinwrap', html: `<span class="pin job" style="background:${it.color}"></span>`, iconSize: [22, 22], iconAnchor: [11, 11] }) }).addTo(layer)
+          .bindPopup(`<b>${esc(it.title)}</b><br><small>${esc(g.length ? g.join(' + ') : 'No stage yet')}${j.contract ? ' · ' + money0(j.contract) : ''}</small><div class="pbtns"><button data-act="mapnav" data-a="${esc(it.addr)}">🧭 Go</button><button data-act="mapopen" data-k="${esc(it.k)}">Open</button></div>`);
+      });
+      if (pts.length !== repMap._n) { repMap._n = pts.length; if (pts.length) repMap.fitBounds(pts, { padding: [40, 40], maxZoom: 11 }); else repMap.fitBounds(SOCAL); }
+      const all = mine(), n = all.filter(mapPlaced).length, note = document.getElementById('repMapNote'); if (note) note.textContent = !all.length ? 'No addresses yet for this rep.' : n + ' of ' + all.length + ' placed' + (n < all.length ? ' · finding the rest…' : '');
+    };
+    repMap.on('popupopen', ev => { ev.popup.getElement().querySelectorAll('[data-act]').forEach(b => { b.onclick = () => mapAct(b.dataset.act, b); }); });
+    draw(); geocodeList(mine(), () => view === 'rep', draw); setTimeout(() => repMap && repMap.invalidateSize(), 150);
+  }
+  function destroyRepMap() { if (repMap) { try { repMap.remove(); } catch {} repMap = null; } }
 
   function render() {
     const t0 = todayISO();
@@ -1549,7 +1627,7 @@
         ${srow('🗓️', 'Upcoming tasks', '', 'go', 'data-v="upcoming"')}
         ${srow('☎️', 'Leads pipeline', leadsDue().length ? `<b class="red">${leadsDue().length} to follow up</b>` : '', 'go', 'data-v="leads"')}
         ${srow('🏦', 'Finance companies', '', 'finedit')}
-        ${srow('📊', 'Rep reports &amp; scorecards', '', 'go', 'data-v="reports"')}
+        ${srow('👥', 'My reps', repNames().length ? repNames().length + ' reps' : '', 'go', 'data-v="reports"')}
         ${srow('🌙', 'Evening review', '', 'go', 'data-v="evening"')}</div>
         <div class="ssec">Settings</div><div class="tools">
         <button id="teamBtn">👥 My team</button>
@@ -1562,6 +1640,10 @@
         <button id="clearDone">🧹 Clear completed</button>
         <input type="file" id="importFile" accept="application/json" hidden></div>
         <div class="hint">Your data is stored on this phone${window.OAFsync && window.OAFsync.label() === 'Synced' ? ' and in the cloud' : ' only. Back up now and then'}. Photos, videos and files are not in the backup yet.<br>Version ${APP_VERSION}</div>`;
+    } else if (view === 'reports') {
+      html += screenReps();
+    } else if (view === 'rep') {
+      html += screenRep();
     } else if (view === 'deal') {
       html += screenDeal();
     } else if (view === 'map') {
@@ -1646,10 +1728,10 @@
       html = `<button class="jbtn wide oldbtn" data-act="oldjob">📥 Add a job that's already in progress</button>` + html;
     }
     $('#stats').innerHTML = stats; $('#stats').hidden = !stats;
-    const SUBS = ['visits', 'calendar', 'deal', 'upcoming', 'reports', 'leads'];
+    const SUBS = ['visits', 'calendar', 'deal', 'upcoming', 'reports', 'rep', 'leads'];
     $('#jobbar').hidden = !['today', 'projects'].includes(view);
     $('#back').hidden = !(view === 'job' || view === 'evening' || SUBS.includes(view) || (view === 'subs' && pickJob));
-    $('#back').textContent = view === 'deal' ? '‹ Back' : view === 'evening' ? '‹ Today' : view === 'job' ? '‹ Jobs' : view === 'subs' && pickJob ? '‹ Job' : '‹ More';
+    $('#back').textContent = view === 'rep' ? '‹ My reps' : view === 'deal' ? '‹ Back' : view === 'evening' ? '‹ Today' : view === 'job' ? '‹ Jobs' : view === 'subs' && pickJob ? '‹ Job' : '‹ More';
     const lateN = visitList().filter(v => v.state === 'late').length;
     $('#mbadge').textContent = lateN || ''; $('#mbadge').hidden = !lateN;
     const ldN = leadsDue().length; $('#lbadge').textContent = ldN || ''; $('#lbadge').hidden = !ldN;
@@ -1658,7 +1740,7 @@
     $('#main').innerHTML = html;
     document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === ({ job: 'projects', visits: 'more', calendar: 'more', deal: dealFrom === 'money' ? 'money' : 'projects', upcoming: 'more', reports: 'more', leads: 'more', subs: 'subs', evening: 'today' }[view] || view)));
     const inChat = view === 'job' && jobTab === 'chat';
-    $('#composer').hidden = !inChat; $('#chatHead').hidden = !inChat; $('#fab').hidden = view === 'job' || view === 'map' || view === 'deal';
+    $('#composer').hidden = !inChat; $('#chatHead').hidden = !inChat; $('#fab').hidden = view === 'job' || view === 'map' || view === 'deal' || view === 'rep' || view === 'reports';
     document.body.classList.toggle('injob', view === 'job');
     document.body.classList.toggle('inchat', inChat);
     document.documentElement.classList.toggle('inchat', inChat);
@@ -1671,6 +1753,7 @@
     }); }
     hydrateMedia(); if (view === 'subs') applySubFilter();
     if (view === 'map') initMap(); else destroyMap();
+    if (view === 'rep') initRepMap(); else destroyRepMap();
     $('#projList').innerHTML = [...new Set(tasks.map(t => t.project).filter(Boolean))].map(p => `<option value="${esc(p)}">`).join('');
   }
 
@@ -2045,7 +2128,7 @@
 
   // ---- events ----
   $('#fab').onclick = () => openSheet(null, view === 'job' ? curJob : '');
-  $('#back').onclick = () => { if (view === 'deal') { if (dealFrom === 'job') { curJob = dealJob; jobTab = 'info'; view = 'job'; } else view = dealFrom || 'money'; render(); window.scrollTo(0, 0); return; } if (view === 'subs' && pickJob) { const n = pickJob; pickJob = ''; curJob = n; jobTab = 'info'; tabHist = ['chat']; view = 'job'; render(); window.scrollTo(0, 0); return; } view = view === 'evening' ? 'today' : view === 'job' ? 'projects' : 'more'; render(); window.scrollTo(0, 0); };
+  $('#back').onclick = () => { if (view === 'rep') { view = 'reports'; render(); window.scrollTo(0, 0); return; } if (view === 'deal') { if (dealFrom === 'job') { curJob = dealJob; jobTab = 'info'; view = 'job'; } else view = dealFrom || 'money'; render(); window.scrollTo(0, 0); return; } if (view === 'subs' && pickJob) { const n = pickJob; pickJob = ''; curJob = n; jobTab = 'info'; tabHist = ['chat']; view = 'job'; render(); window.scrollTo(0, 0); return; } view = view === 'evening' ? 'today' : view === 'job' ? 'projects' : 'more'; render(); window.scrollTo(0, 0); };
   $('#cancelBtn').onclick = closeSheet;
   $('#saveBtn').onclick = saveSheet;
   $('#bg').onclick = e => { if (e.target.id === 'bg') closeSheet(); };
@@ -2096,6 +2179,7 @@
       if (act === 'addto') return openSheet(null, el.dataset.p);
       if (act.startsWith('map')) return void mapAct(act, el);
       if (act.startsWith('deal')) return void dealAct(act, el);
+      if (act === 'repopen') { repName = el.dataset.r; view = 'rep'; render(); window.scrollTo(0, 0); return; }
       if (act === 'openjob') { curJob = el.dataset.p; jobTab = 'chat'; tabHist = []; chatSearch = false; chatLimit = 300; view = 'job'; render(); return; }
       if (act === 'go') { view = el.dataset.v; filter = 'all'; render(); window.scrollTo(0, 0); return; }
       if (act === 'addkick') return openPick('Add the kickoff checklist', [{ label: 'Start today', fn: () => addKickoff(curJob, 0) }, { label: 'Start tomorrow at 8:00 AM', fn: () => addKickoff(curJob, 1) }, { label: 'Start in 2 days', fn: () => addKickoff(curJob, 2) }]);

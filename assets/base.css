@@ -514,3 +514,14 @@ nav button{min-width:0}nav button span{font-size:11.5px}
 .linkbtn{border:0;background:none;color:var(--accent-text,#d9520a);font:700 inherit;padding:0;text-decoration:underline}
 .upcard{display:block;width:100%;text-align:left;border:0;font:inherit;color:var(--text);border-left-color:#16a34a}.upyou{text-align:right;flex:none}.upyou small{display:block;margin:0}.upyou b{font:800 20px var(--font);color:#16a34a}.uph small{display:block}
 #dlBg .sheet,#exBg .sheet{max-height:92vh;overflow-y:auto;-webkit-overflow-scrolling:touch}#dlBg .actions,#exBg .actions{position:sticky;bottom:0;z-index:3;background:var(--surface);padding:12px 0 calc(12px + env(safe-area-inset-bottom));margin-top:8px;box-shadow:0 -8px 12px -8px rgba(15,39,71,.18)}
+
+.reptable{background:var(--surface);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;margin-top:12px}
+.rth,.rtr{display:grid;grid-template-columns:1.5fr .6fr 1fr 1fr;gap:6px;align-items:center;padding:12px 14px;width:100%;text-align:left}
+.rth{font:700 11.5px var(--font);text-transform:uppercase;letter-spacing:.04em;color:var(--muted);border-bottom:1px solid var(--line)}.rth span:not(:first-child),.rtr span:not(.rn){text-align:right}
+.rtr{border:0;border-bottom:1px solid var(--line);background:none;color:var(--text);font:600 14.5px var(--font)}.rtr.tot{border-bottom:0;background:color-mix(in srgb,var(--accent) 7%,var(--surface));font-weight:800}
+.rtr .rn b{display:block;font-size:15.5px}.rtr .rn small{display:block;color:var(--muted);font-weight:500;font-size:12px;margin-top:2px}.rtr .mine{color:#16a34a;font-weight:800}
+.red{color:var(--danger)}.muted{color:var(--muted)}em.red{font-style:normal;font-weight:700}
+.repjob{display:grid;gap:5px;width:100%;text-align:left;border:0;background:var(--surface);color:var(--text);border-radius:16px;padding:12px 14px;margin-bottom:10px;box-shadow:var(--shadow);font:inherit}
+.rjtop,.rjmid{display:flex;justify-content:space-between;align-items:center;gap:10px}.rjtop b{font-size:15.5px}.rjmoney{font:800 15px var(--font);white-space:nowrap}.rjmid{font-size:13px}.rjmine{color:#16a34a;font-weight:800}
+.repjob .stg{background:color-mix(in srgb,var(--c) 15%,transparent);color:var(--c);border-radius:999px;padding:3px 10px;font:700 12px var(--font)}
+.mapbar .mcall{width:auto;height:auto;min-width:0;border-radius:18px;padding:10px 16px;font:700 14px var(--font);color:var(--text);background:var(--surface);display:inline-flex;gap:6px;align-items:center;white-space:nowrap}
