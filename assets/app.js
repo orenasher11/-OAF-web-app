@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '79';
+  const APP_VERSION = '80';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -2103,10 +2103,18 @@
   let jobMode = 'new';
   function paintMode() { document.querySelectorAll('#j-mode .chip').forEach(c => c.classList.toggle('on', c.dataset.m === jobMode)); $('#j-kickwrap').hidden = jobMode === 'old'; $('#jHelp').textContent = jobMode === 'old' ? 'Adds a job that is already underway. No Game Day plan. You can paste its WhatsApp chat in right after.' : 'Creates your Game Day plan: the 8–9 AM kickoff, the evening call, the upsell push on day 2 and the day-3 check.'; }
   $('#j-mode').onclick = e => { const c = e.target.closest('[data-m]'); if (c) { jobMode = c.dataset.m; paintMode(); $('#j-stage').value = jobMode === 'old' ? 'IN PROGRESS' : 'PRE NTP'; } };
+  let jAlso = [];
+  function paintAlso() {
+    const sel = $('#j-seller').value, names = team.filter(x => x.name !== OWNER && x.name !== sel).map(x => x.name); jAlso = jAlso.filter(n => names.includes(n));
+    $('#j-also').innerHTML = names.length ? names.map(nm => `<button type="button" class="chip ${jAlso.includes(nm) ? 'on' : ''}" data-n="${esc(nm)}">${esc(nm)}</button>`).join('') : '<span class="hint">Add reps under More → 👥 My team.</span>';
+  }
+  $('#j-also').onclick = e => { const c = e.target.closest('[data-n]'); if (!c) return; const nm = c.dataset.n; jAlso = jAlso.includes(nm) ? jAlso.filter(x => x !== nm) : [...jAlso, nm]; paintAlso(); };
+  $('#j-seller').onchange = paintAlso;
   function openJob(mode) {
     jobMode = mode || 'new'; paintMode(); $('#j-stage').innerHTML = JSTAGES.map(x => `<option>${x}</option>`).join(''); $('#j-stage').value = jobMode === 'old' ? 'IN PROGRESS' : 'PRE NTP'; $('#j-fin').innerHTML = finOptions(''); $('#j-appr').value = '';
     ['#j-name', '#j-sub', '#j-phone', '#j-addr', '#j-upsell', '#j-contract'].forEach(i => { $(i).value = ''; $(i).classList.remove('err'); });
     $('#j-seller').innerHTML = (asRep ? `<option value="${esc(asRep)}">${esc(asRep)}</option>` : '<option value="">Me (I sold it)</option>') + repTeam().filter(x => x.name !== asRep).map(x => `<option>${esc(x.name)}</option>`).join('');
+    jAlso = []; paintAlso();
     setKick(addDays(1)); $('#j-time').value = '08:00';
     $('#jobBg').classList.add('open'); setTimeout(() => $('#j-addr').focus(), 60);
   }
@@ -2128,7 +2136,7 @@
     if (pendingLead) { const l = leads.find(x => x.id === pendingLead); if (l) { l.stage = 'sold'; l.job = name; saveLeads(); } pendingLead = null; }
     const finCo = $('#j-fin').value, apprIn = parseInt(($('#j-appr').value || '').replace(/[^0-9]/g, ''), 10) || 0;
     const stNew = $('#j-stage').value || 'PRE NTP';
-    jobs[name] = { ...(jobs[name] || {}), ...($('#j-seller').value ? { seller: $('#j-seller').value } : {}), stage: stNew, stages: [stNew], stageAt: new Date().toISOString(), stageLog: [{ stage: stNew, at: new Date().toISOString(), by: OWNER || '' }], ...(finCo ? { fins: [{ id: uid(), company: finCo, status: finCo === 'Cash' ? '' : 'Applied', amount: contract || 0, approved: finCo === 'Cash' ? 0 : apprIn }], finance: '', finStatus: '' } : {}), upsell: amt, ...(contract ? { contract, ...(jobMode === 'new' ? { soldOn: todayISO() } : {}) } : {}), subs, sub: undefined, phone: undefined, addr: $('#j-addr').value.trim(), ...(jobMode === 'new' ? { kick } : {}), every: jobs[name]?.every || 5 };
+    jobs[name] = { ...(jobs[name] || {}), ...($('#j-seller').value ? { seller: $('#j-seller').value } : {}), ...(jAlso.filter(n => n !== $('#j-seller').value).length ? { repNames: jAlso.filter(n => n !== $('#j-seller').value) } : {}), stage: stNew, stages: [stNew], stageAt: new Date().toISOString(), stageLog: [{ stage: stNew, at: new Date().toISOString(), by: OWNER || '' }], ...(finCo ? { fins: [{ id: uid(), company: finCo, status: finCo === 'Cash' ? '' : 'Applied', amount: contract || 0, approved: finCo === 'Cash' ? 0 : apprIn }], finance: '', finStatus: '' } : {}), upsell: amt, ...(contract ? { contract, ...(jobMode === 'new' ? { soldOn: todayISO() } : {}) } : {}), subs, sub: undefined, phone: undefined, addr: $('#j-addr').value.trim(), ...(jobMode === 'new' ? { kick } : {}), every: jobs[name]?.every || 5 };
     saveJobs(); save(); closeJob();
     if (jobMode === 'old') { curJob = name; jobTab = 'chat'; tabHist = []; chatLimit = 300; view = 'job'; render(); toast('Job added. Tap ＋ then Import WhatsApp chat to bring in the history.'); return; }
     view = 'today'; filter = 'all'; render(); window.scrollTo(0, 0);
