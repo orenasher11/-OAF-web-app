@@ -49,7 +49,7 @@
     else if (row.kind === 'team') { const tid = id.slice(5); st.team = st.team.filter(x => x.id !== tid); if (!del) st.team.push(dat); }
     else if (row.kind === 'job') {
       if (del) { delete st.jobs[id.slice(4)]; return; } const { name, ...rest } = dat; if (!name) return;
-      st.jobs[name] = { ...(st.jobs[name] || {}), ...rest };
+      const cur = st.jobs[name] || {}; st.jobs[name] = { ...rest, chat: cur.chat || [], notes: cur.notes || [] };   // replace the job's details (so removed fields stay removed); chat and notes sync as their own rows
     } else if (row.kind === 'msg' || row.kind === 'note') {
       const key = row.kind === 'msg' ? 'chat' : 'notes', name = dat.job;
       if (!name && !del) return;
@@ -67,8 +67,8 @@
     const st = A.getState(), local = buildDocs(st), applied = [];
     for (const row of rows) {
       const loc = local[row.id], s = meta.synced[row.id];
-      const pending = loc && (!s || hash(loc) !== s.h);
-      if (pending && row.updated_by !== (user && user.id)) continue;   // my newer edit wins; it will be pushed
+      const pending = loc && (!s || hash(loc) !== s.h), deletedHere = !loc && s && !row.deleted;
+      if (pending || deletedHere) continue;   // a change I made on this phone and have not sent yet always wins; it gets pushed next. (Even when the server copy is my own older save.)
       applyRow(st, row); applied.push(row);
     }
     if (applied.length) {
