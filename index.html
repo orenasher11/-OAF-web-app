@@ -9,8 +9,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.svg">
 <title>My Tasks</title>
-<link rel="stylesheet" href="assets/base.css?v=81">
-<link rel="stylesheet" href="assets/theme.css?v=81">
+<link rel="stylesheet" href="assets/base.css?v=82">
+<link rel="stylesheet" href="assets/theme.css?v=82">
 </head>
 <body class="blueprint">
 <div class="app">
@@ -435,7 +435,7 @@
 <script>
 // Safety net: shows a repair bar if the app fails to start or throws an error. Never deletes your saved tasks.
 (function () {
-  var EXPECT = '81', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
+  var EXPECT = '82', bar = document.getElementById('fixbar'), msg = document.getElementById('fixmsg');
   function show(t) { try { msg.textContent = t; bar.hidden = false; } catch (e) {} }
   window.__oafNotify = show;
   window.addEventListener('error', function (e) { if (e.message && /ResizeObserver|Script error/.test(e.message)) return; show('Error: ' + (e.message || 'unknown') + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
@@ -461,12 +461,12 @@
   }, 3500);
 })();
 </script>
-<script src="assets/config.js?v=81"></script>
-<script src="assets/app.js?v=81"></script>
+<script src="assets/config.js?v=82"></script>
+<script src="assets/app.js?v=82"></script>
 <script>
 // The cloud library loads in the background, so a slow connection never blocks the app from opening.
 (function () {
-  var V = '81';
+  var V = '82';
   function boot() { var s = document.createElement('script'); s.src = 'assets/sync.js?v=' + V; document.body.appendChild(s); }
   if (window.OAF_CFG && window.OAF_CFG.url) {
     var t = document.createElement('script'); t.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';

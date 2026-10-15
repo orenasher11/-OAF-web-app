@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '81';
+  const APP_VERSION = '82';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -1579,6 +1579,14 @@
   // "View as a rep": every screen shows only that rep's jobs, tasks and leads, with their pay worked out the same way as yours.
   function paintAsBar() { const b = $('#asbar'); if (!b) return; b.hidden = !asRep; if (asRep) $('#asName').textContent = asRep; }
   // Your own screens show only the jobs you sold yourself. A rep's jobs show only when you open that rep (My reps).
+  // Rep switcher: a row under the title on the main screens. Me, then each rep, then All.
+  const REPBAR_VIEWS = ['today', 'projects', 'map', 'money', 'reports'];
+  function repBarHTML() {
+    const names = repNames(); if (!names.length) return '';
+    const range = periodRange('month'), first = n => String(n).split(' ')[0];
+    const chip = (cls, act, r, label, dot) => `<button class="rbchip ${cls}" data-act="${act}"${r ? ` data-r="${esc(r)}"` : ''}>${label}${dot ? '<i class="rbdot"></i>' : ''}</button>`;
+    return `<div class="repswitch">${chip(!asRep && view !== 'reports' ? 'on' : '', 'repsw', '', 'Me')}${names.map(nm => chip(asRep === nm ? 'on' : '', 'repsw', nm, esc(first(nm)), repStats(nm, range).quiet > 0)).join('')}${chip(!asRep && view === 'reports' ? 'on' : '', 'repall', '', '👥 All')}</div>`;
+  }
   let jobsFull = null;
   const allJobs = () => jobsFull || jobs;
   function render() {
@@ -1794,6 +1802,8 @@
     const ldN = leadsDue().length; $('#lbadge').textContent = ldN || ''; $('#lbadge').hidden = !ldN;
     const inPlay = [...new Set(open.map(t => t.project).filter(Boolean))].reduce((a, n) => a + (jobs[n]?.upsell || 0), 0);
     $('#pot').innerHTML = inPlay ? `Upsell potential in play <b>${money(inPlay)}</b>` : 'Add upsell potential to each job';
+    const showRB = REPBAR_VIEWS.includes(view); if (showRB) html = repBarHTML() + html;
+    document.body.classList.toggle('hasrepbar', showRB && !!repNames().length);
     $('#main').innerHTML = html;
     document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === ({ job: 'projects', visits: 'more', calendar: 'more', deal: dealFrom === 'money' ? 'money' : 'projects', upcoming: 'more', reports: 'more', leads: 'more', subs: 'subs', evening: 'today' }[view] || view)));
     const inChat = view === 'job' && jobTab === 'chat';
@@ -2248,6 +2258,8 @@
       if (act === 'addto') return openSheet(null, el.dataset.p);
       if (act.startsWith('map')) return void mapAct(act, el);
       if (act.startsWith('deal')) return void dealAct(act, el);
+      if (act === 'repsw') { asRep = el.dataset.r || ''; if (!['today', 'projects', 'map', 'money'].includes(view)) view = 'projects'; render(); window.scrollTo(0, 0); return; }
+      if (act === 'repall') { asRep = ''; view = 'reports'; render(); window.scrollTo(0, 0); return; }
       if (act === 'repopen') { asRep = el.dataset.r; view = 'projects'; render(); window.scrollTo(0, 0); return; }
       if (act === 'openjob') { if (view === 'rep' && repName) { asRep = repName; } curJob = el.dataset.p; jobTab = 'chat'; tabHist = []; chatSearch = false; chatLimit = 300; view = 'job'; render(); return; }
       if (act === 'go') { view = el.dataset.v; filter = 'all'; render(); window.scrollTo(0, 0); return; }
