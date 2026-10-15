@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '80';
+  const APP_VERSION = '81';
   const KEY = 'oaf-tasks-v1';           // same key as the live app, so your tasks carry over
   let OWNER = '';
   try { OWNER = localStorage.getItem('oaf-name-v1') || ''; } catch {}
@@ -422,7 +422,7 @@
       const t = $('#dl-title').value.trim() || 'Upsell', ups = j.upsells = j.upsells || [], u = dlId && ups.find(x => x.id === dlId), f = { title: t, amount: v, costs, status: 'won' };
       const tgt = u || { id: uid(), at: todayISO(), wonAt: todayISO() }; Object.assign(tgt, f); delete tgt.cost; if (dlReps.length) tgt.repNames = dlReps.slice(); else delete tgt.repNames; if (lp === '') delete tgt.leadPct; else tgt.leadPct = parseFloat(lp) || 0; if (!u) ups.push(tgt);
     }
-    syncMembers(j); saveJobs(); $('#dlBg').classList.remove('open'); render(); toast('Saved');
+    syncMembers(j); saveJobs(); $('#dlBg').classList.remove('open'); if (dlMode === 'contract' && j.seller && !asRep) { view = 'projects'; render(); window.scrollTo(0, 0); return toast('Moved to ' + j.seller + '. Find it under More → My reps.'); } render(); toast('Saved');
   }
   $('#dlDel').onclick = () => { const j = jobs[dealJob]; if (!j) return; const gone = (j.upsells || []).find(x => x.id === dlId); j.upsells = (j.upsells || []).filter(x => x.id !== dlId); saveJobs(); $('#dlBg').classList.remove('open'); render(); toast('Upsell removed', () => { j.upsells = [...(j.upsells || []), gone]; saveJobs(); render(); }); };
   $('#dlPdf').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) maybeContract(dealJob, { name: f.name, mime: f.type, blob: f }, true); };
@@ -743,13 +743,14 @@
     const r = { deals: 0, contracts: 0, revenue: 0, upWon: 0, upPlay: 0, upOff: 0, leadFirst: 0, leadUp: 0, costs: 0, over: 0, share: 0 };
     Object.values(jobs).forEach(j => {
       if (!j) return;
-      if (j.contract && inR(soldDay(j), range) && (!asRep || salesOf(j).some(s => s.kind === 'first'))) { r.deals++; r.contracts += j.contract; if (!asRep && j.seller) r.over += j.contract * cfg.override / 100; }
+      if (j.contract && inR(soldDay(j), range) && (!asRep || salesOf(j).some(s => s.kind === 'first'))) { r.deals++; r.contracts += j.contract; }
       salesOf(j).forEach(s => {
         if (!inR(s.date || soldDay(j), range)) return;
         r.revenue += s.amount; r.costs += s.cost; r.share += s.share;
         if (s.kind === 'first') r.leadFirst += s.lead; else { r.leadUp += s.lead; r.upWon += s.amount; }
       });
     });
+    if (!asRep) Object.values(allJobs()).forEach(j => { if (j && j.seller && j.contract && inR(soldDay(j), range)) r.over += j.contract * cfg.override / 100; });
     r.lead = r.leadFirst + r.leadUp; r.profit = r.revenue - r.lead - r.costs; r.net = r.share + r.over; return r;
   }
   function jobNet(j) {
@@ -1354,8 +1355,8 @@
   const milesBetween = (a, b) => { const R = 3958.8, r = x => x * Math.PI / 180, dLa = r(b.lat - a.lat), dLo = r(b.lng - a.lng), h = Math.sin(dLa / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLo / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
   function mapItems() {
     const out = [];
-    Object.keys(jobs).filter(n => jobs[n] && !jobs[n].archived && !jobs[n].demo && jobs[n].addr && (!asRep || repOn(jobs[n], asRep))).forEach(n => { const j = jobs[n], i = stageIdx(j); out.push({ k: 'job:' + n, kind: 'job', key: n, title: j.addr, sub: n, addr: j.addr, rec: j, save: saveJobs, color: i >= 0 ? SCOL[i] : '#94a3b8' }); });
-    leads.filter(l => isOpenLead(l) && l.addr && (!asRep || l.rep === asRep)).forEach(l => out.push({ k: 'lead:' + l.id, kind: 'lead', key: l.id, title: l.name || l.addr, sub: l.addr, addr: l.addr, rec: l, save: saveLeads, color: '#f59e0b' }));
+    Object.keys(jobs).filter(n => jobs[n] && !jobs[n].archived && !jobs[n].demo && jobs[n].addr && (asRep ? repOn(jobs[n], asRep) : (view === 'rep' || !jobs[n].seller))).forEach(n => { const j = jobs[n], i = stageIdx(j); out.push({ k: 'job:' + n, kind: 'job', key: n, title: j.addr, sub: n, addr: j.addr, rec: j, save: saveJobs, color: i >= 0 ? SCOL[i] : '#94a3b8' }); });
+    leads.filter(l => isOpenLead(l) && l.addr && (asRep ? l.rep === asRep : (view === 'rep' || !l.rep))).forEach(l => out.push({ k: 'lead:' + l.id, kind: 'lead', key: l.id, title: l.name || l.addr, sub: l.addr, addr: l.addr, rec: l, save: saveLeads, color: '#f59e0b' }));
     return out;
   }
   const mapPlaced = it => it.rec.lat != null && it.rec.geoAddr === it.addr;
@@ -1503,8 +1504,8 @@
 
   // ---- my reps: table, then one rep's jobs, map and what you earn from them ----
   let repName = '', repMap = null;
-  const repNames = () => { const s = new Set(repTeam().map(x => x.name).filter(Boolean)); Object.values(jobs).forEach(j => { if (j && !j.demo) fileReps(j).forEach(x => s.add(x)); }); return [...s].sort((x, y) => x.localeCompare(y)); };
-  const repJobs = rep => Object.entries(jobs).filter(([, j]) => j && !j.demo && repOn(j, rep));
+  const repNames = () => { const s = new Set(repTeam().map(x => x.name).filter(Boolean)); Object.values(allJobs()).forEach(j => { if (j && !j.demo) fileReps(j).forEach(x => s.add(x)); }); return [...s].sort((x, y) => x.localeCompare(y)); };
+  const repJobs = rep => Object.entries(allJobs()).filter(([, j]) => j && !j.demo && repOn(j, rep));
   function lastAct(j) {
     const t = x => { const v = x ? new Date(x).getTime() : 0; return isNaN(v) ? 0 : v; };
     return Math.max(...(j.chat || []).map(m => t(m.at)), t(j.stageAt), t(j.soldOn && j.soldOn + 'T12:00:00'), t(j.last && j.last + 'T12:00:00'), 0);
@@ -1577,14 +1578,22 @@
 
   // "View as a rep": every screen shows only that rep's jobs, tasks and leads, with their pay worked out the same way as yours.
   function paintAsBar() { const b = $('#asbar'); if (!b) return; b.hidden = !asRep; if (asRep) $('#asName').textContent = asRep; }
+  // Your own screens show only the jobs you sold yourself. A rep's jobs show only when you open that rep (My reps).
+  let jobsFull = null;
+  const allJobs = () => jobsFull || jobs;
   function render() {
-    if (!asRep) { renderCore(); paintAsBar(); return; }
-    const J = jobs, T = tasks, L = leads, jr = Object.fromEntries(Object.entries(J).filter(([, j]) => j && repOn(j, asRep)));
-    jobs = jr; tasks = T.filter(t => t.project && jr[t.project]); leads = L.filter(l => l.rep === asRep); swapping = true;
-    try { renderCore(); } finally { jobs = J; tasks = T; leads = L; swapping = false; }
+    const J = jobs, T = tasks, L = leads;
+    if (!asRep && ['reports', 'rep'].includes(view)) { renderCore(); paintAsBar(); return; }
+    jobsFull = J;
+    const jr = Object.fromEntries(Object.entries(J).filter(([, j]) => j && (asRep ? repOn(j, asRep) : !j.seller)));
+    jobs = jr; tasks = asRep ? T.filter(t => t.project && jr[t.project]) : T.filter(t => !(t.project && J[t.project] && J[t.project].seller));
+    leads = asRep ? L.filter(l => l.rep === asRep) : L.filter(l => !l.rep); swapping = true;
+    try { renderCore(); } finally { jobs = J; tasks = T; leads = L; swapping = false; jobsFull = null; }
     paintAsBar();
   }
   function renderCore() {
+    if (view === 'job' && curJob && !jobs[curJob]) { view = 'projects'; jobTab = 'chat'; }
+    if (view === 'deal' && dealJob && !jobs[dealJob]) { view = 'projects'; }
     const t0 = todayISO();
     const open = tasks.filter(t => !t.done).sort(cmp);
     const open_ = n => open.filter(t => t.project === n);
@@ -2138,6 +2147,7 @@
     const stNew = $('#j-stage').value || 'PRE NTP';
     jobs[name] = { ...(jobs[name] || {}), ...($('#j-seller').value ? { seller: $('#j-seller').value } : {}), ...(jAlso.filter(n => n !== $('#j-seller').value).length ? { repNames: jAlso.filter(n => n !== $('#j-seller').value) } : {}), stage: stNew, stages: [stNew], stageAt: new Date().toISOString(), stageLog: [{ stage: stNew, at: new Date().toISOString(), by: OWNER || '' }], ...(finCo ? { fins: [{ id: uid(), company: finCo, status: finCo === 'Cash' ? '' : 'Applied', amount: contract || 0, approved: finCo === 'Cash' ? 0 : apprIn }], finance: '', finStatus: '' } : {}), upsell: amt, ...(contract ? { contract, ...(jobMode === 'new' ? { soldOn: todayISO() } : {}) } : {}), subs, sub: undefined, phone: undefined, addr: $('#j-addr').value.trim(), ...(jobMode === 'new' ? { kick } : {}), every: jobs[name]?.every || 5 };
     saveJobs(); save(); closeJob();
+    if (jobs[name] && jobs[name].seller && !asRep) { view = 'reports'; render(); window.scrollTo(0, 0); toast(name + ' was added to ' + jobs[name].seller + '. Tap them to open it.'); return; }
     if (jobMode === 'old') { curJob = name; jobTab = 'chat'; tabHist = []; chatLimit = 300; view = 'job'; render(); toast('Job added. Tap ＋ then Import WhatsApp chat to bring in the history.'); return; }
     view = 'today'; filter = 'all'; render(); window.scrollTo(0, 0);
     toast(`Game Day plan created for ${name}`);
@@ -2239,7 +2249,7 @@
       if (act.startsWith('map')) return void mapAct(act, el);
       if (act.startsWith('deal')) return void dealAct(act, el);
       if (act === 'repopen') { asRep = el.dataset.r; view = 'projects'; render(); window.scrollTo(0, 0); return; }
-      if (act === 'openjob') { curJob = el.dataset.p; jobTab = 'chat'; tabHist = []; chatSearch = false; chatLimit = 300; view = 'job'; render(); return; }
+      if (act === 'openjob') { if (view === 'rep' && repName) { asRep = repName; } curJob = el.dataset.p; jobTab = 'chat'; tabHist = []; chatSearch = false; chatLimit = 300; view = 'job'; render(); return; }
       if (act === 'go') { view = el.dataset.v; filter = 'all'; render(); window.scrollTo(0, 0); return; }
       if (act === 'addkick') return openPick('Add the kickoff checklist', [{ label: 'Start today', fn: () => addKickoff(curJob, 0) }, { label: 'Start tomorrow at 8:00 AM', fn: () => addKickoff(curJob, 1) }, { label: 'Start in 2 days', fn: () => addKickoff(curJob, 2) }]);
       if (act === 'tlink') {
@@ -2272,7 +2282,7 @@
       if (act === 'qup') { dealJob = curJob; return openDl('upsell'); }
       if (act === 'soldby') {
         const j = jobs[curJob] = jobs[curJob] || {};
-        const set = nm => { j.seller = nm; if (nm) j.repNames = noPartners(j.repNames).filter(x => x !== nm); if (!j.repNames || !j.repNames.length) delete j.repNames; syncMembers(j); saveJobs(); render(); toast(nm ? nm + ' sold it. You get ' + cfg.override + '% of the contract.' : 'Marked as sold by you'); };
+        const set = nm => { j.seller = nm; if (nm) j.repNames = noPartners(j.repNames).filter(x => x !== nm); if (!j.repNames || !j.repNames.length) delete j.repNames; syncMembers(j); saveJobs(); if (nm && !asRep) { view = 'projects'; render(); window.scrollTo(0, 0); toast('Moved to ' + nm + '. Find it under More → My reps.'); return; } render(); toast(nm ? nm + ' sold it. You get ' + cfg.override + '% of the contract.' : 'Marked as sold by you'); };
         return openPick('Who sold this job?', [{ label: (j.seller ? '' : '✓ ') + 'Me (I sold it myself)', fn: () => set('') }, ...repTeam().map(x => ({ label: (j.seller === x.name ? '✓ ' : '') + label2(x), fn: () => set(x.name) }))]);
       }
       if (act === 'alsoreps') {
